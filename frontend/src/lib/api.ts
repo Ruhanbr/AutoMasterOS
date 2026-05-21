@@ -147,8 +147,10 @@ api.interceptors.response.use(
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: async (email: string, password: string, tenant_id: string) => {
-    const response = await api.post('/auth/login', { email, password, tenant_id });
+  login: async (email: string, password: string, tenant_id?: string) => {
+    const body: Record<string, string> = { email, password };
+    if (tenant_id) body.tenant_id = tenant_id;
+    const response = await api.post('/auth/login', body);
     // Armazena token no SQLite local (para sync offline)
     if (response.data?.access_token && isTauri()) {
       const serverUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:8000';
