@@ -1,0 +1,2 @@
+Coloque aqui um PNG 1024x1024 chamado icon.png e execute:
+  npm run tauri:icon

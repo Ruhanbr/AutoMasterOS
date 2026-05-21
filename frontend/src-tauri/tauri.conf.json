@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AutoMaster",
+  "version": "1.0.0",
+  "identifier": "com.automaster.oficina",
+  "build": {
+    "frontendDist": "frontend",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null,
+      "dangerousDisableAssetCspModification": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "AutoMaster",
+    "copyright": "Copyright © 2026 AutoMaster",
+    "shortDescription": "Sistema de Gestão de Oficinas Agrícolas",
+    "longDescription": "AutoMaster é um sistema completo de gestão para oficinas agrícolas, com ordens de serviço, controle de estoque, financeiro e emissão de NF-e.",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

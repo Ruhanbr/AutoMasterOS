@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Permissões padrão do AutoMaster",
+  "windows": ["main", "settings"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open"
+  ]
+}

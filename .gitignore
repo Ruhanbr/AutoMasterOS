@@ -1,0 +1,44 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.log
+celerybeat-schedule
+celerybeat.pid
+
+# ── Segredos / Certificados ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pfx
+*.p12
+/certs/
+
+# ── Dados locais ──────────────────────────────────────────────────────────────
+/storage/
+*.sqlite
+*.db
+
+# ── Frontend (Next.js) ────────────────────────────────────────────────────────
+frontend/.next/
+frontend/node_modules/
+frontend/.env.local
+frontend/out/
+frontend/.vercel
+
+# ── Sistema ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

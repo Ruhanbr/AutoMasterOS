@@ -1,0 +1,202 @@
+services:
+  # ─── API ──────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: automaster_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - storage_data:/storage
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://automaster:automaster@postgres:5432/automaster
+      - DATABASE_URL_SYNC=postgresql+psycopg2://automaster:automaster@postgres:5432/automaster
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  # ─── Celery Worker ────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: automaster_worker
+    volumes:
+      - .:/app
+      - storage_data:/storage
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://automaster:automaster@postgres:5432/automaster
+      - DATABASE_URL_SYNC=postgresql+psycopg2://automaster:automaster@postgres:5432/automaster
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.workers.celery_app worker
+      --loglevel=info
+      --queues=nfe,default
+      --concurrency=4
+      --max-tasks-per-child=100
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  # ─── Celery Beat (Scheduler) ──────────────────────────────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: automaster_beat
+    volumes:
+      - .:/app
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: >
+      celery -A app.workers.celery_app beat
+      --loglevel=info
+      --scheduler=celery.beat:PersistentScheduler
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  # ─── Flower (Monitoring) ──────────────────────────────────────────────────
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: automaster_flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - worker
+    command: >
+      celery -A app.workers.celery_app flower
+      --port=5555
+      --url_prefix=flower
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: automaster_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: automaster
+      POSTGRES_USER: automaster
+      POSTGRES_PASSWORD: automaster
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=pt_BR.UTF-8 --lc-ctype=pt_BR.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automaster -d automaster"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  # ─── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: automaster_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  # ─── PgAdmin ──────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:8.13
+    container_name: automaster_pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@automaster.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: automaster_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - WATCHPACK_POLLING=true
+    command: sh -c "npm install --prefer-offline 2>/dev/null; npm run dev"
+    depends_on:
+      - api
+    networks:
+      - automaster_net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+  storage_data:
+
+networks:
+  automaster_net:
+    driver: bridge

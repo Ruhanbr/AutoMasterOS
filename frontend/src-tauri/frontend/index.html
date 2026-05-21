@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoMaster — Configuração</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 44px 40px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.6);
+    }
+
+    /* ── Cabeçalho ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+    .logo-box {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .logo-text h1 { font-size: 22px; font-weight: 700; color: #f8fafc; line-height: 1.2; }
+    .logo-text p  { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+
+    /* ── Formulário ── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    .input-wrap { position: relative; }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 13px 16px;
+      background: #0f172a;
+      border: 1.5px solid #334155;
+      border-radius: 10px;
+      color: #f1f5f9;
+      font-size: 14px;
+      font-family: 'Courier New', 'Lucida Console', monospace;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input[type="text"]:focus {
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+    input[type="text"]::placeholder { color: #475569; }
+
+    .hint {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+
+    /* ── Exemplos ── */
+    .examples {
+      margin-top: 20px;
+      margin-bottom: 28px;
+    }
+    .examples-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+    .example-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #64748b;
+      font-family: 'Courier New', monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin: 3px 4px 3px 0;
+    }
+    .example-chip:hover {
+      border-color: #4f46e5;
+      color: #818cf8;
+      background: #1e1b4b22;
+    }
+    .example-label {
+      font-size: 10px;
+      color: #475569;
+      font-family: sans-serif;
+      font-style: italic;
+    }
+
+    /* ── Botão ── */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.9; }
+    .btn:active:not(:disabled) { transform: scale(0.99); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Erro ── */
+    .error-box {
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: rgba(127, 29, 29, 0.15);
+      border: 1px solid rgba(153, 27, 27, 0.3);
+      border-radius: 8px;
+      color: #fca5a5;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Rodapé ── */
+    .footer {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #1e293b;
+      text-align: center;
+      font-size: 11px;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <!-- Cabeçalho -->
+    <div class="header">
+      <div class="logo-box">🔧</div>
+      <div class="logo-text">
+        <h1>AutoMaster</h1>
+        <p>Sistema de Gestão de Oficinas</p>
+      </div>
+    </div>
+
+    <!-- Formulário -->
+    <p class="section-title">Configuração do Servidor</p>
+
+    <label for="url">Endereço do Servidor</label>
+    <div class="input-wrap">
+      <input
+        type="text"
+        id="url"
+        placeholder="http://192.168.1.100:3000"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+    <p class="hint">
+      Informe o endereço do servidor onde o AutoMaster está instalado.<br />
+      Solicite ao administrador de TI se não souber.
+    </p>
+
+    <!-- Exemplos rápidos -->
+    <div class="examples">
+      <p class="examples-title">Exemplos rápidos</p>
+      <span class="example-chip" onclick="fill('http://localhost:3000')">
+        localhost:3000 <span class="example-label">— mesmo PC</span>
+      </span>
+      <span class="example-chip" onclick="fill('http://192.168.1.100:3000')">
+        192.168.1.100:3000 <span class="example-label">— rede local</span>
+      </span>
+      <span class="example-chip" onclick="fill('https://app.minhaoficina.com.br')">
+        app.minhaoficina.com.br <span class="example-label">— nuvem</span>
+      </span>
+    </div>
+
+    <!-- Botão de conexão -->
+    <button class="btn" id="btn" onclick="connect()">
+      Conectar ao Servidor
+    </button>
+    <div class="error-box" id="error"></div>
+
+    <div class="footer">AutoMaster v1.0 &nbsp;·&nbsp; Configure uma vez, use sempre</div>
+  </div>
+
+  <script>
+    // API do Tauri (injetada automaticamente via withGlobalTauri: true)
+    const { invoke } = window.__TAURI__.core;
+
+    // Carrega URL atual ao abrir (útil quando abre como "Configurações" pelo tray)
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const current = await invoke('get_server_url');
+        if (current && current !== 'http://localhost:3000') {
+          document.getElementById('url').value = current;
+        }
+      } catch (_) {}
+      document.getElementById('url').focus();
+    });
+
+    // Preenche o campo ao clicar em um exemplo
+    function fill(url) {
+      document.getElementById('url').value = url;
+      document.getElementById('url').focus();
+    }
+
+    // Conecta ao servidor
+    async function connect() {
+      const urlInput = document.getElementById('url');
+      const btn      = document.getElementById('btn');
+      const errBox   = document.getElementById('error');
+      const url      = urlInput.value.trim();
+
+      if (!url) {
+        showError('Informe o endereço do servidor.');
+        return;
+      }
+
+      // Estado de carregamento
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Conectando...';
+      errBox.style.display = 'none';
+
+      try {
+        await invoke('save_and_navigate', { url });
+        // Se chegou aqui, a janela principal já navegou. Esta janela será fechada pelo Rust.
+      } catch (e) {
+        showError('Não foi possível conectar: ' + String(e));
+        btn.disabled = false;
+        btn.innerHTML = 'Conectar ao Servidor';
+      }
+    }
+
+    function showError(msg) {
+      const errBox = document.getElementById('error');
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+    }
+
+    // Enter aciona o botão
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') connect();
+    });
+  </script>
+</body>
+</html>
