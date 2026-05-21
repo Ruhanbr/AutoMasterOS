@@ -37,6 +37,9 @@ frontend/.env.local
 frontend/out/
 frontend/.vercel
 
+# ── Tauri / Rust (binários compilados — nunca subir) ─────────────────────────
+frontend/src-tauri/target/
+
 # ── Sistema ───────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
