@@ -15,7 +15,7 @@ import type { AxiosError } from 'axios';
 const loginSchema = z.object({
   email: z.string().email('E-mail inválido'),
   password: z.string().min(1, 'Senha obrigatória'),
-  tenant_id: z.string().uuid('Código da oficina inválido (deve ser um UUID)'),
+  tenant_id: z.string().uuid('Código da oficina inválido (deve ser um UUID)').or(z.literal('')).optional(),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -42,7 +42,7 @@ function LoginPageContent() {
 
   const onSubmit = async (data: LoginForm) => {
     try {
-      const response = await authApi.login(data.email, data.password, data.tenant_id);
+      const response = await authApi.login(data.email, data.password, data.tenant_id || undefined);
       const { access_token, refresh_token } = response.data as LoginResponse;
       setTokens(access_token, refresh_token);
       toast.success('Login realizado com sucesso!');
