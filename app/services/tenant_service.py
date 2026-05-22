@@ -58,7 +58,7 @@ class TenantService:
         await self._repo.save(tenant)
 
         # Desativa todos os usuários do tenant em lote
-        await self._repo._session.execute(
+        await self._repo.session.execute(
             sa_update(User)
             .where(User.tenant_id == tenant_id)
             .values(active=False)
