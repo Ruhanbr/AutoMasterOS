@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DuplicateResourceException, ResourceNotFoundException
@@ -17,9 +18,14 @@ class TenantService:
 
     async def create(self, data: TenantCreate) -> Tenant:
         if await self._repo.document_exists(data.document):
-            raise DuplicateResourceException("Tenant", "document", data.document)
+            raise DuplicateResourceException("Oficina", "CNPJ/CPF", data.document)
 
-        tenant = await self._repo.create(**data.model_dump())
+        try:
+            tenant = await self._repo.create(**data.model_dump())
+        except IntegrityError:
+            # Fallback: índice único do banco capturou duplicata que escapou da verificação
+            raise DuplicateResourceException("Oficina", "CNPJ/CPF", data.document)
+
         logger.info("tenant_criado", tenant_id=str(tenant.id), document=data.document)
         return tenant
 
