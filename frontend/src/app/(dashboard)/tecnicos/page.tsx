@@ -224,7 +224,28 @@ export default function TecnicosPage() {
   const loginLink = tenantId ? `${appUrl}/login?tenant=${tenantId}` : null;
 
   const copyText = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(() => toast.success(`${label} copiado!`));
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => toast.success(`${label} copiado!`)).catch(() => fallbackCopy(text, label));
+    } else {
+      fallbackCopy(text, label);
+    }
+  };
+
+  const fallbackCopy = (text: string, label: string) => {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    try {
+      document.execCommand('copy');
+      toast.success(`${label} copiado!`);
+    } catch {
+      toast.error('Não foi possível copiar. Selecione e copie manualmente.');
+    }
+    document.body.removeChild(el);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
