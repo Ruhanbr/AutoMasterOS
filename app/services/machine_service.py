@@ -117,10 +117,26 @@ class MachineService:
 
     # ── Histórico OS com Redis cache + selectinload (N+1 free) ───────────────
 
+    async def os_summary_for_machine(
+        self,
+        tenant_id: uuid.UUID,
+        machine_id: uuid.UUID,
+        status: str | None = None,
+    ) -> dict:
+        """Totais financeiros e contagem por status do histórico de uma máquina."""
+        from app.models.service_order import ServiceOrderStatus as SOStatus
+        status_enum = SOStatus(status) if status else None
+        return await self._so_repo.sum_by_machine(
+            machine_id=machine_id,
+            tenant_id=tenant_id,
+            status=status_enum,
+        )
+
     async def list_os_historico_cached(
         self,
         tenant_id: uuid.UUID,
         machine_id: uuid.UUID,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> PaginatedResponse:
@@ -132,7 +148,8 @@ class MachineService:
           - TTL: 5 min
           - Invalidado ao finalizar/criar OS (via _invalidate_machine_os_cache)
         """
-        cache_key = f"{_CACHE_NS}:{tenant_id}:{machine_id}:{page}:{page_size}"
+        status_key = status or "all"
+        cache_key = f"{_CACHE_NS}:{tenant_id}:{machine_id}:{status_key}:{page}:{page_size}"
         cached = await cache.get(cache_key)
         if cached is not None:
             logger.info(
@@ -142,9 +159,13 @@ class MachineService:
             )
             return PaginatedResponse(**cached)
 
+        from app.models.service_order import ServiceOrderStatus as SOStatus
+        status_enum = SOStatus(status) if status else None
+
         orders, total = await self._so_repo.list_by_machine_with_items(
             machine_id=machine_id,
             tenant_id=tenant_id,
+            status=status_enum,
             page=page,
             page_size=page_size,
         )

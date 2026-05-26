@@ -20,6 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCcw,
+  TrendingUp,
+  Package,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -39,7 +41,7 @@ import {
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { PageSpinner } from '@/components/ui/spinner';
 import { machinesApi } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { MACHINE_TYPES } from '@/types';
 import type { Machine, PaginatedResponse, ServiceOrder } from '@/types';
 import type { AxiosError } from 'axios';
@@ -94,15 +96,32 @@ export default function MachineDetailPage() {
   });
 
   const [osPage, setOsPage] = useState(1);
+  const [osStatus, setOsStatus] = useState('');
   const OS_PAGE_SIZE = 10;
 
   // Usa o endpoint dedicado GET /machines/{id}/os (cache Redis 5 min no backend)
   const { data: ordersData, isLoading: osLoading } = useQuery<PaginatedResponse<ServiceOrder>>({
-    queryKey: ['machine-orders', params.id, osPage],
+    queryKey: ['machine-orders', params.id, osStatus, osPage],
     queryFn: async () => {
-      const res = await machinesApi.listOS(params.id, { page: osPage, page_size: OS_PAGE_SIZE });
+      const res = await machinesApi.listOS(params.id, {
+        status: osStatus || undefined,
+        page: osPage,
+        page_size: OS_PAGE_SIZE,
+      });
       return res.data;
     },
+    enabled: !!machine,
+  });
+
+  const { data: osSummary } = useQuery<{
+    total_os: number;
+    total_faturamento: number;
+    total_servicos: number;
+    total_pecas: number;
+    by_status: Record<string, number>;
+  }>({
+    queryKey: ['machine-os-summary', params.id],
+    queryFn: async () => (await machinesApi.osSummary(params.id)).data,
     enabled: !!machine,
   });
 
@@ -417,19 +436,92 @@ export default function MachineDetailPage() {
           </form>
         )}
 
-        {/* Service Orders */}
+        {/* Resumo financeiro das OS */}
+        {osSummary && osSummary.total_os > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total OS</p>
+                <p className="mt-1 text-2xl font-bold text-blue-600">{osSummary.total_os}</p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {osSummary.by_status['ABERTA'] > 0 && (
+                    <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5">
+                      {osSummary.by_status['ABERTA']} abertas
+                    </span>
+                  )}
+                  {osSummary.by_status['EM_ANDAMENTO'] > 0 && (
+                    <span className="text-xs bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5">
+                      {osSummary.by_status['EM_ANDAMENTO']} andamento
+                    </span>
+                  )}
+                  {osSummary.by_status['FINALIZADA'] > 0 && (
+                    <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">
+                      {osSummary.by_status['FINALIZADA']} finalizadas
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Faturamento</p>
+                    <p className="mt-1 text-xl font-bold text-green-600">{formatCurrency(osSummary.total_faturamento)}</p>
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-green-400" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Serviços</p>
+                    <p className="mt-1 text-xl font-bold text-purple-600">{formatCurrency(osSummary.total_servicos)}</p>
+                  </div>
+                  <Wrench className="w-5 h-5 text-purple-400" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Peças</p>
+                    <p className="mt-1 text-xl font-bold text-orange-600">{formatCurrency(osSummary.total_pecas)}</p>
+                  </div>
+                  <Package className="w-5 h-5 text-orange-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Histórico de OS */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                 <ClipboardList className="w-4 h-4" />
-                Ordens de Serviço
-                {ordersData && ordersData.total > 0 && (
+                Histórico de Manutenção
+                {osSummary && osSummary.total_os > 0 && (
                   <span className="ml-1 text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
-                    {ordersData.total}
+                    {osSummary.total_os}
                   </span>
                 )}
               </CardTitle>
+              <Select
+                value={osStatus}
+                onChange={(e) => { setOsStatus(e.target.value); setOsPage(1); }}
+                className="w-44 text-sm"
+              >
+                <option value="">Todos os status</option>
+                <option value="ABERTA">Abertas</option>
+                <option value="EM_ANDAMENTO">Em Andamento</option>
+                <option value="FINALIZADA">Finalizadas</option>
+                <option value="CANCELADA">Canceladas</option>
+              </Select>
             </div>
           </CardHeader>
           <CardContent>
@@ -439,7 +531,7 @@ export default function MachineDetailPage() {
               </div>
             ) : relatedOrders.length === 0 ? (
               <p className="text-sm text-gray-400 py-4 text-center">
-                Nenhuma ordem de serviço vinculada a esta máquina
+                Nenhuma ordem de serviço {osStatus ? 'com esse status' : 'vinculada a esta máquina'}
               </p>
             ) : (
               <>
@@ -455,7 +547,7 @@ export default function MachineDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {relatedOrders.map((so) => {
-                      const status = STATUS_LABELS[so.status] ?? { label: so.status, cls: '' };
+                      const st = STATUS_LABELS[so.status] ?? { label: so.status, cls: '' };
                       return (
                         <TableRow key={so.id}>
                           <TableCell>
@@ -467,7 +559,7 @@ export default function MachineDetailPage() {
                             </Link>
                           </TableCell>
                           <TableCell>
-                            <Badge className={status.cls}>{status.label}</Badge>
+                            <Badge className={st.cls}>{st.label}</Badge>
                           </TableCell>
                           <TableCell className="text-sm text-gray-500">
                             {formatDate(so.opened_at)}
@@ -475,11 +567,8 @@ export default function MachineDetailPage() {
                           <TableCell className="text-sm text-gray-500">
                             {so.finished_at ? formatDate(so.finished_at) : '—'}
                           </TableCell>
-                          <TableCell className="text-sm font-medium text-gray-900 text-right">
-                            {new Intl.NumberFormat('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            }).format(so.total_amount)}
+                          <TableCell className="text-sm font-semibold text-gray-900 text-right">
+                            {formatCurrency(so.total_amount)}
                           </TableCell>
                         </TableRow>
                       );
@@ -500,12 +589,12 @@ export default function MachineDetailPage() {
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
-                      <span className="px-1">{osPage}</span>
+                      <span className="px-1">{osPage} / {ordersData.total_pages}</span>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setOsPage((p) => p + 1)}
-                        disabled={relatedOrders.length < OS_PAGE_SIZE}
+                        onClick={() => setOsPage((p) => Math.min(ordersData.total_pages, p + 1))}
+                        disabled={osPage === ordersData.total_pages}
                       >
                         <ChevronRight className="w-4 h-4" />
                       </Button>

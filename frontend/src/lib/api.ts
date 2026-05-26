@@ -279,8 +279,11 @@ export const machinesApi = {
     api.get(`/machines/client/${clientId}`, { params }),
   get: (id: string) => api.get(`/machines/${id}`),
   /** Histórico de OS vinculadas a esta máquina (paginado, cache Redis 5 min). */
-  listOS: (machineId: string, params?: { page?: number; page_size?: number }) =>
+  listOS: (machineId: string, params?: { status?: string; page?: number; page_size?: number }) =>
     api.get(`/machines/${machineId}/os`, { params }),
+  /** Totais financeiros e contagem por status do histórico de OS de uma máquina. */
+  osSummary: (machineId: string, params?: { status?: string }) =>
+    api.get(`/machines/${machineId}/os/summary`, { params }),
   create: (data: unknown, idempotencyKey?: string) =>
     api.post('/machines', data, idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : undefined),
   update: (id: string, data: unknown) => api.patch(`/machines/${id}`, data),

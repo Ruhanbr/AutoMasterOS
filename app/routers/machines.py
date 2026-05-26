@@ -162,6 +162,31 @@ async def update_machine(
 
 # ── Histórico OS (paginado + selectinload + cache Redis) ──────────────────────
 
+@router.get("/{machine_id}/os/summary", response_model=dict)
+async def get_machine_os_summary(
+    machine_id: uuid.UUID,
+    tenant_id: TenantId,
+    session: DbSession,
+    current_user: CurrentUser,
+    client_id: ClientId,
+    status: str | None = Query(None),
+):
+    """Totais financeiros e contagem por status do histórico de OS de uma máquina."""
+    try:
+        svc = MachineService(session)
+        if client_id is not None:
+            await svc.get_for_client(tenant_id, machine_id, client_id)
+        else:
+            await svc.get(tenant_id, machine_id)
+        return await svc.os_summary_for_machine(
+            tenant_id=tenant_id,
+            machine_id=machine_id,
+            status=status,
+        )
+    except AutoMasterException as exc:
+        raise to_http_exception(exc)
+
+
 @router.get("/{machine_id}/os", response_model=PaginatedResponse)
 async def list_machine_service_orders(
     machine_id: uuid.UUID,
@@ -169,6 +194,7 @@ async def list_machine_service_orders(
     session: DbSession,
     current_user: CurrentUser,
     client_id: ClientId,
+    status: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
 ):
@@ -186,6 +212,7 @@ async def list_machine_service_orders(
         return await svc.list_os_historico_cached(
             tenant_id=tenant_id,
             machine_id=machine_id,
+            status=status,
             page=page,
             page_size=page_size,
         )

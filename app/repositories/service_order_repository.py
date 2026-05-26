@@ -133,10 +133,55 @@ class ServiceOrderRepository(BaseRepository[ServiceOrder]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def sum_by_machine(
+        self,
+        machine_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        status: ServiceOrderStatus | None = None,
+    ) -> dict:
+        """Totais agregados do histórico de uma máquina."""
+        filters = [
+            ServiceOrder.machine_id == machine_id,
+            ServiceOrder.tenant_id == tenant_id,
+        ]
+        if status:
+            filters.append(ServiceOrder.status == status)
+
+        stmt = select(
+            func.count(ServiceOrder.id).label("total_os"),
+            func.coalesce(func.sum(ServiceOrder.total_amount), 0).label("total_faturamento"),
+            func.coalesce(func.sum(ServiceOrder.total_services), 0).label("total_servicos"),
+            func.coalesce(func.sum(ServiceOrder.total_parts), 0).label("total_pecas"),
+        ).where(*filters)
+
+        result = await self.session.execute(stmt)
+        row = result.one()
+
+        # Contagem por status
+        count_stmt = select(
+            ServiceOrder.status,
+            func.count(ServiceOrder.id).label("qty"),
+        ).where(
+            ServiceOrder.machine_id == machine_id,
+            ServiceOrder.tenant_id == tenant_id,
+        ).group_by(ServiceOrder.status)
+
+        count_result = await self.session.execute(count_stmt)
+        by_status = {r.status: r.qty for r in count_result.all()}
+
+        return {
+            "total_os": row.total_os,
+            "total_faturamento": float(row.total_faturamento),
+            "total_servicos": float(row.total_servicos),
+            "total_pecas": float(row.total_pecas),
+            "by_status": by_status,
+        }
+
     async def list_by_machine_with_items(
         self,
         machine_id: uuid.UUID,
         tenant_id: uuid.UUID,
+        status: ServiceOrderStatus | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[ServiceOrder], int]:
@@ -145,6 +190,8 @@ class ServiceOrderRepository(BaseRepository[ServiceOrder]):
             ServiceOrder.machine_id == machine_id,
             ServiceOrder.tenant_id == tenant_id,
         ]
+        if status:
+            filters.append(ServiceOrder.status == status)
 
         count_stmt = (
             select(func.count())
