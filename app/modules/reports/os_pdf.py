@@ -1,7 +1,16 @@
 """
-OS PDF generator using ReportLab.
+OS PDF generator using ReportLab — Modern redesign.
 
-Generates a professional A4 PDF for a Service Order (Ordem de Serviço).
+Layout:
+  • Header band com logo, nome da oficina e número/status da OS
+  • Faixa de metadados (abertura, técnico, finalização)
+  • Cards lado a lado: Cliente | Máquina
+  • Tabela de itens clean com zebra
+  • Bloco de totais alinhado à direita
+  • Bloco PIX (condicional) verde
+  • Diagnóstico / Solução
+  • Área de assinaturas
+  • Footer
 """
 import io
 from datetime import datetime
@@ -15,6 +24,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (
     HRFlowable,
     Image,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -22,22 +32,40 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-# Color palette
-COLOR_PRIMARY = colors.HexColor("#1a5276")
-COLOR_SECONDARY = colors.HexColor("#2e86c1")
-COLOR_ACCENT = colors.HexColor("#f39c12")
-COLOR_LIGHT_GRAY = colors.HexColor("#f2f3f4")
-COLOR_DARK_GRAY = colors.HexColor("#566573")
-COLOR_SUCCESS = colors.HexColor("#1e8449")
+# ── Paleta ────────────────────────────────────────────────────────────────────
+C_PRIMARY    = colors.HexColor("#1B3A5C")   # azul‑marinho profundo
+C_ACCENT     = colors.HexColor("#2E7D32")   # verde agrícola
+C_ACCENT_LT  = colors.HexColor("#E8F5E9")   # verde claro (fundo PIX)
+C_ORANGE     = colors.HexColor("#E65100")   # despesas / peças
+C_HEADER_BG  = colors.HexColor("#1B3A5C")   # fundo do cabeçalho
+C_HEADER_SUB = colors.HexColor("#234870")   # fundo da faixa de metadados
+C_ROW_ALT    = colors.HexColor("#F5F7FA")   # linha alternada da tabela
+C_BORDER     = colors.HexColor("#D0D7DE")   # bordas suaves
+C_GRAY       = colors.HexColor("#6E7781")   # texto secundário
+C_DARK       = colors.HexColor("#1F2937")   # texto principal
+C_WHITE      = colors.white
+C_TOTAL_BG   = colors.HexColor("#EBF3FB")   # fundo do bloco de totais
+C_STATUS = {
+    "ABERTA":       colors.HexColor("#1565C0"),
+    "EM_ANDAMENTO": colors.HexColor("#E65100"),
+    "FINALIZADA":   colors.HexColor("#2E7D32"),
+    "CANCELADA":    colors.HexColor("#B71C1C"),
+}
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _status_color(status: str) -> colors.Color:
-    mapping = {
-        "ABERTA": colors.HexColor("#2980b9"),
-        "EM_ANDAMENTO": colors.HexColor("#d35400"),
-        "FINALIZADA": COLOR_SUCCESS,
-    }
-    return mapping.get(status, COLOR_DARK_GRAY)
+    return C_STATUS.get(status, C_GRAY)
+
+
+def _status_label(status: str) -> str:
+    return {
+        "ABERTA": "ABERTA",
+        "EM_ANDAMENTO": "EM ANDAMENTO",
+        "FINALIZADA": "FINALIZADA",
+        "CANCELADA": "CANCELADA",
+    }.get(status, status)
 
 
 def _fmt_currency(value) -> str:
@@ -72,798 +100,664 @@ def _fmt_date(dt) -> str:
         return str(dt)
 
 
-def _load_signature_image(url: str | None, width: int = 120, height: int = 50) -> Image | None:
-    """
-    Carrega imagem de assinatura a partir de:
-      - data URI base64 (data:image/png;base64,...)  ← assinatura do cliente (canvas)
-      - URL HTTP(S)                                   ← assinatura do técnico
-      - path local                                    ← uso interno/testes
-    Retorna None se inválido.
-    """
+def _load_image(url: str | None, width: int = 120, height: int = 50) -> Image | None:
     if not url:
         return None
     try:
-        import base64
-        import os
-        import urllib.request
-
+        import base64, os, urllib.request
         if url.startswith("data:"):
-            # base64 data URI: extrai a parte binária e cria buffer em memória
             header, encoded = url.split(",", 1)
-            img_bytes = base64.b64decode(encoded)
-            source = io.BytesIO(img_bytes)
+            source = io.BytesIO(base64.b64decode(encoded))
         elif url.startswith(("http://", "https://")):
-            tmp_path = f"/tmp/sig_{abs(hash(url))}.img"
-            if not os.path.exists(tmp_path):
-                urllib.request.urlretrieve(url, tmp_path)
-            source = tmp_path
+            tmp = f"/tmp/sig_{abs(hash(url))}.img"
+            if not os.path.exists(tmp):
+                urllib.request.urlretrieve(url, tmp)
+            source = tmp
         else:
             if not os.path.exists(url):
                 return None
             source = url
-
         return Image(source, width=width, height=height, kind="proportional")
     except Exception:
         return None
 
 
+def _section_header(text: str, page_width: float, bg=None) -> Table:
+    """Faixa colorida de seção com texto em maiúsculas."""
+    bg = bg or C_PRIMARY
+    style = ParagraphStyle(
+        "sh", fontSize=8, fontName="Helvetica-Bold",
+        textColor=C_WHITE, alignment=TA_LEFT,
+    )
+    t = Table([[Paragraph(f"  {text}", style)]], colWidths=[page_width], rowHeights=[6.5 * mm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), bg),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return t
+
+
+def _label_value(label: str, value: str,
+                 label_style: ParagraphStyle,
+                 value_style: ParagraphStyle) -> list:
+    return [Paragraph(label, label_style), Paragraph(value or "—", value_style)]
+
+
+# ── Main generator ────────────────────────────────────────────────────────────
+
 def generate_os_pdf(order_data: dict) -> bytes:
     """
-    Generate a professional OS PDF.
-
-    order_data keys:
-      os_number, status, opened_at, finished_at, technician_name,
-      technician_signature_url (opcional — path local ou URL),
-      description, diagnosis, solution, client_name, client_document, client_phone,
-      machine_model, machine_brand, machine_serial (optional),
-      items: list[{item_type, description, quantity, unit_price, total_price}],
-      total_services, total_parts, total_displacement, total_discount, total_amount,
-      tenant_name, generated_at
+    Gera o PDF de OS com layout moderno.
+    Todos os campos de order_data são os mesmos da versão anterior.
     """
     buffer = io.BytesIO()
+    page_w = A4[0] - 24 * mm   # largura útil
 
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=15 * mm,
-        leftMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        buffer, pagesize=A4,
+        rightMargin=12 * mm, leftMargin=12 * mm,
+        topMargin=12 * mm, bottomMargin=12 * mm,
         title=f"OS #{order_data.get('os_number', '')}",
         author=order_data.get("tenant_name", "AutoMaster"),
     )
 
     styles = getSampleStyleSheet()
 
-    # Custom styles
-    title_style = ParagraphStyle(
-        "Title",
-        parent=styles["Normal"],
-        fontSize=18,
-        fontName="Helvetica-Bold",
-        textColor=COLOR_PRIMARY,
-        alignment=TA_LEFT,
-        spaceAfter=2 * mm,
-    )
-    subtitle_style = ParagraphStyle(
-        "Subtitle",
-        parent=styles["Normal"],
-        fontSize=10,
-        fontName="Helvetica",
-        textColor=COLOR_DARK_GRAY,
-        alignment=TA_LEFT,
-    )
-    section_header_style = ParagraphStyle(
-        "SectionHeader",
-        parent=styles["Normal"],
-        fontSize=9,
-        fontName="Helvetica-Bold",
-        textColor=colors.white,
-        alignment=TA_LEFT,
-    )
-    label_style = ParagraphStyle(
-        "Label",
-        parent=styles["Normal"],
-        fontSize=8,
-        fontName="Helvetica-Bold",
-        textColor=COLOR_DARK_GRAY,
-    )
-    value_style = ParagraphStyle(
-        "Value",
-        parent=styles["Normal"],
-        fontSize=9,
-        fontName="Helvetica",
-        textColor=colors.black,
-    )
-    footer_style = ParagraphStyle(
-        "Footer",
-        parent=styles["Normal"],
-        fontSize=7,
-        fontName="Helvetica",
-        textColor=COLOR_DARK_GRAY,
-        alignment=TA_CENTER,
-    )
-    total_style = ParagraphStyle(
-        "Total",
-        parent=styles["Normal"],
-        fontSize=12,
-        fontName="Helvetica-Bold",
-        textColor=COLOR_PRIMARY,
-        alignment=TA_RIGHT,
-    )
+    # ── Estilos reutilizáveis ─────────────────────────────────────────────────
+    def S(name, **kw):
+        base = kw.pop("parent", styles["Normal"])
+        return ParagraphStyle(name, parent=base, **kw)
+
+    lbl = S("lbl", fontSize=7, fontName="Helvetica-Bold", textColor=C_GRAY)
+    val = S("val", fontSize=8.5, fontName="Helvetica", textColor=C_DARK)
+    val_mono = S("vmono", fontSize=8, fontName="Helvetica", textColor=C_DARK)
+    footer_s = S("foot", fontSize=6.5, fontName="Helvetica", textColor=C_GRAY, alignment=TA_CENTER)
+    total_lbl = S("tlbl", fontSize=9,  fontName="Helvetica-Bold", textColor=C_GRAY)
+    total_val = S("tval", fontSize=9,  fontName="Helvetica", textColor=C_DARK, alignment=TA_RIGHT)
+    grand_lbl = S("glbl", fontSize=12, fontName="Helvetica-Bold", textColor=C_PRIMARY)
+    grand_val = S("gval", fontSize=12, fontName="Helvetica-Bold", textColor=C_PRIMARY, alignment=TA_RIGHT)
+    col_hdr_s = S("ch", fontSize=8, fontName="Helvetica-Bold", textColor=C_WHITE, alignment=TA_CENTER)
+    cell_s    = S("cs", fontSize=8, fontName="Helvetica", textColor=C_DARK)
+    cell_r    = S("cr", fontSize=8, fontName="Helvetica", textColor=C_DARK, alignment=TA_RIGHT)
+    cell_c    = S("cc", fontSize=8, fontName="Helvetica", textColor=C_DARK, alignment=TA_CENTER)
+    sig_lbl_s = S("sl", fontSize=7.5, fontName="Helvetica", textColor=C_GRAY, alignment=TA_CENTER)
+    sig_name_s= S("sn", fontSize=8,   fontName="Helvetica-Bold", textColor=C_DARK, alignment=TA_CENTER)
+    pix_hdr_s = S("ph", fontSize=9,   fontName="Helvetica-Bold", textColor=C_ACCENT)
+    pix_val_s = S("pv", fontSize=8,   fontName="Helvetica", textColor=C_DARK)
+    pix_sm_s  = S("ps", fontSize=7,   fontName="Helvetica", textColor=C_GRAY)
+    meta_s    = S("ms", fontSize=8,   fontName="Helvetica", textColor=C_WHITE)
+    meta_lbl_s= S("ml", fontSize=7,   fontName="Helvetica-Bold", textColor=colors.HexColor("#A8C4E0"))
+    diag_s    = S("ds", fontSize=8.5, fontName="Helvetica", textColor=C_DARK, leading=13)
 
     story = []
-    page_width = A4[0] - 30 * mm  # usable width
 
-    # ── HEADER ────────────────────────────────────────────────────────────────
-    tenant_name = order_data.get("tenant_name", "AutoMaster Oficina")
-    tenant_doc = order_data.get("tenant_document", "")
+    # ════════════════════════════════════════════════════════════════════════
+    # 1. CABEÇALHO — banda azul com logo + info oficina + OS número / status
+    # ════════════════════════════════════════════════════════════════════════
+    tenant_name  = order_data.get("tenant_name", "AutoMaster Oficina")
+    tenant_doc   = order_data.get("tenant_document", "")
     tenant_phone = order_data.get("tenant_phone", "")
     tenant_email = order_data.get("tenant_email", "")
-    tenant_addr = order_data.get("tenant_address", "")
-    tenant_logo_url = order_data.get("tenant_logo_url")
-    os_number = order_data.get("os_number", "")
-    status = order_data.get("status", "")
+    tenant_addr  = order_data.get("tenant_address", "")
+    os_number    = order_data.get("os_number", "")
+    status       = str(order_data.get("status", ""))
     status_color = _status_color(status)
+    status_label = _status_label(status)
 
-    # Monta bloco de informações da oficina
-    oficina_lines = [Paragraph(f"<b>{tenant_name}</b>", title_style)]
-    if tenant_doc:
-        label = "CPF" if len(str(tenant_doc).replace(".", "").replace("-", "").replace("/", "")) == 11 else "CNPJ"
-        oficina_lines.append(Paragraph(f"{label}: {tenant_doc}", subtitle_style))
-    if tenant_phone:
-        oficina_lines.append(Paragraph(f"Tel: {tenant_phone}", subtitle_style))
-    if tenant_email:
-        oficina_lines.append(Paragraph(f"E-mail: {tenant_email}", subtitle_style))
-    if tenant_addr:
-        oficina_lines.append(Paragraph(tenant_addr, subtitle_style))
-
-    from reportlab.platypus import KeepTogether
-
-    # Logo: usa a imagem da oficina se disponível, senão bloco colorido
-    logo_img = _load_signature_image(tenant_logo_url) if tenant_logo_url else None
+    # Logo
+    logo_img = _load_image(order_data.get("tenant_logo_url"))
     if logo_img:
-        logo_img.drawWidth = 20 * mm
-        logo_img.drawHeight = 20 * mm
+        logo_img.drawWidth  = 18 * mm
+        logo_img.drawHeight = 18 * mm
         logo_img.kind = "proportional"
         logo_cell = logo_img
     else:
-        logo_cell = Table(
-            [[""]],
-            colWidths=[20 * mm],
-            rowHeights=[20 * mm],
-            style=TableStyle([
-                ("BACKGROUND", (0, 0), (-1, -1), COLOR_PRIMARY),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]),
-        )
+        # Quadrado colorido como placeholder
+        logo_cell = Table([[""]], colWidths=[18*mm], rowHeights=[18*mm],
+                          style=TableStyle([("BACKGROUND",(0,0),(-1,-1), colors.HexColor("#234870"))]))
 
-    header_data = [
-        [
-            logo_cell,
-            oficina_lines,
-            Paragraph(
-                f"<b>OS #{os_number}</b>",
-                ParagraphStyle("OSNum", parent=title_style, fontSize=16, alignment=TA_RIGHT),
-            ),
-        ]
+    # Info da oficina (coluna central)
+    oficina_name_s = S("on", fontSize=13, fontName="Helvetica-Bold", textColor=C_WHITE)
+    oficina_sub_s  = S("os2", fontSize=8, fontName="Helvetica", textColor=colors.HexColor("#A8C4E0"))
+
+    info_lines: list[Paragraph] = [Paragraph(tenant_name, oficina_name_s)]
+    sub_parts = []
+    if tenant_doc:
+        label = "CPF" if len("".join(c for c in tenant_doc if c.isdigit())) == 11 else "CNPJ"
+        sub_parts.append(f"{label}: {tenant_doc}")
+    if tenant_phone:
+        sub_parts.append(f"Tel: {tenant_phone}")
+    if tenant_email:
+        sub_parts.append(tenant_email)
+    if sub_parts:
+        info_lines.append(Paragraph("   ·   ".join(sub_parts), oficina_sub_s))
+    if tenant_addr:
+        info_lines.append(Paragraph(tenant_addr, oficina_sub_s))
+
+    # Coluna direita: OS número + badge de status
+    os_num_s  = S("osn", fontSize=22, fontName="Helvetica-Bold", textColor=C_WHITE, alignment=TA_RIGHT)
+    os_type_s = S("ost", fontSize=8,  fontName="Helvetica", textColor=colors.HexColor("#A8C4E0"), alignment=TA_RIGHT)
+    os_info_cell = [
+        Paragraph("ORDEM DE SERVIÇO", os_type_s),
+        Paragraph(f"#{os_number}", os_num_s),
     ]
 
+    header_data = [[logo_cell, info_lines, os_info_cell]]
     header_table = Table(
         header_data,
-        colWidths=[22 * mm, page_width - 55 * mm, 33 * mm],
+        colWidths=[22*mm, page_w - 22*mm - 45*mm, 45*mm],
         style=TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND",    (0,0), (-1,-1), C_HEADER_BG),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING",   (0,0), (-1,-1), 5),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 5),
+            ("TOPPADDING",    (0,0), (-1,-1), 8),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
         ]),
     )
     story.append(header_table)
-    story.append(Spacer(1, 3 * mm))
 
-    # Status badge
+    # Badge de status (faixa fina abaixo do cabeçalho)
+    status_s = S("stbadge", fontSize=8.5, fontName="Helvetica-Bold", textColor=C_WHITE, alignment=TA_CENTER)
     status_table = Table(
-        [[Paragraph(f"Status: {status}", ParagraphStyle(
-            "StatusBadge",
-            parent=styles["Normal"],
-            fontSize=10,
-            fontName="Helvetica-Bold",
-            textColor=colors.white,
-            alignment=TA_CENTER,
-        ))]],
-        colWidths=[page_width],
-        rowHeights=[8 * mm],
+        [[Paragraph(f"◉  {status_label}", status_s)]],
+        colWidths=[page_w], rowHeights=[6*mm],
         style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), status_color),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ROUNDEDCORNERS", [3]),
+            ("BACKGROUND", (0,0), (-1,-1), status_color),
+            ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
+            ("TOPPADDING",    (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
         ]),
     )
     story.append(status_table)
-    story.append(Spacer(1, 4 * mm))
 
-    # ── OS INFO ───────────────────────────────────────────────────────────────
-    info_data = [
-        [
-            Paragraph("Abertura:", label_style),
-            Paragraph(_fmt_datetime(order_data.get("opened_at")), value_style),
-            Paragraph("Finalização:", label_style),
-            Paragraph(_fmt_datetime(order_data.get("finished_at")), value_style),
-        ],
-        [
-            Paragraph("Técnico:", label_style),
-            Paragraph(str(order_data.get("technician_name") or "—"), value_style),
-            Paragraph("", label_style),
-            Paragraph("", value_style),
-        ],
+    # ════════════════════════════════════════════════════════════════════════
+    # 2. FAIXA DE METADADOS — abertura | início | finalização | técnico
+    # ════════════════════════════════════════════════════════════════════════
+    meta_items = [
+        ("Abertura",    _fmt_datetime(order_data.get("opened_at"))),
+        ("Início",      _fmt_datetime(order_data.get("started_at") or order_data.get("opened_at"))),
+        ("Finalização", _fmt_datetime(order_data.get("finished_at"))),
+        ("Técnico",     str(order_data.get("technician_name") or "—")),
     ]
-    if order_data.get("description"):
-        info_data.append([
-            Paragraph("Descrição:", label_style),
-            Paragraph(str(order_data.get("description", "")), value_style),
-            Paragraph("", label_style),
-            Paragraph("", value_style),
+    meta_cells = []
+    for mlabel, mval in meta_items:
+        meta_cells.append([
+            Paragraph(mlabel.upper(), meta_lbl_s),
+            Paragraph(mval, meta_s),
         ])
 
-    col_w = page_width / 4
-    info_table = Table(
-        info_data,
-        colWidths=[col_w * 0.6, col_w * 1.4, col_w * 0.6, col_w * 1.4],
+    meta_col_w = page_w / len(meta_items)
+    meta_data  = [
+        [Table(mc, colWidths=[meta_col_w], style=TableStyle([
+            ("LEFTPADDING",   (0,0),(-1,-1), 8),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 4),
+            ("TOPPADDING",    (0,0),(-1,-1), 5),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+        ])) for mc in meta_cells]
+    ]
+    meta_table = Table(meta_data, colWidths=[meta_col_w]*len(meta_items),
         style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), COLOR_LIGHT_GRAY),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.white),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ]),
-    )
-    story.append(info_table)
-    story.append(Spacer(1, 4 * mm))
+            ("BACKGROUND",  (0,0),(-1,-1), C_HEADER_SUB),
+            ("VALIGN",      (0,0),(-1,-1), "TOP"),
+            ("LINEAFTER",   (0,0),(-2,-1), 0.5, colors.HexColor("#2D5F8A")),
+            ("TOPPADDING",    (0,0),(-1,-1), 0),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+            ("LEFTPADDING",   (0,0),(-1,-1), 0),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+        ]))
+    story.append(meta_table)
+    story.append(Spacer(1, 4*mm))
 
-    # ── CLIENT SECTION ────────────────────────────────────────────────────────
-    client_header = Table(
-        [[Paragraph("  CLIENTE", section_header_style)]],
-        colWidths=[page_width],
-        rowHeights=[7 * mm],
-        style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), COLOR_SECONDARY),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ]),
-    )
-    story.append(client_header)
+    # ════════════════════════════════════════════════════════════════════════
+    # 3. DESCRIÇÃO DA OS (se houver)
+    # ════════════════════════════════════════════════════════════════════════
+    if order_data.get("description"):
+        story.append(_section_header("DESCRIÇÃO DO SERVIÇO", page_w))
+        desc_table = Table(
+            [[Paragraph(str(order_data["description"]), diag_s)]],
+            colWidths=[page_w],
+            style=TableStyle([
+                ("BACKGROUND",    (0,0),(-1,-1), C_ROW_ALT),
+                ("LEFTPADDING",   (0,0),(-1,-1), 8),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 8),
+                ("TOPPADDING",    (0,0),(-1,-1), 6),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 6),
+                ("BOX",           (0,0),(-1,-1), 0.5, C_BORDER),
+            ]),
+        )
+        story.append(desc_table)
+        story.append(Spacer(1, 4*mm))
 
+    # ════════════════════════════════════════════════════════════════════════
+    # 4. CARDS LADO A LADO: CLIENTE | MÁQUINA
+    # ════════════════════════════════════════════════════════════════════════
+    client  = order_data
+    machine = order_data
+    half_w  = (page_w - 3*mm) / 2
+
+    def _info_rows(pairs: list[tuple[str,str]]) -> list:
+        rows = []
+        for lbl_txt, val_txt in pairs:
+            if val_txt and val_txt != "—":
+                rows.append([Paragraph(lbl_txt, lbl), Paragraph(str(val_txt), val)])
+        return rows or [[Paragraph("—", val), Paragraph("", val)]]
+
+    # Cliente
     client_phone = str(order_data.get("client_phone") or "—")
     client_phone2 = order_data.get("client_phone_secondary")
-    client_fazenda = order_data.get("client_fazenda")
-    client_address = order_data.get("client_address")
-    client_ie = order_data.get("client_inscricao_estadual")
-
-    client_data = [
-        [
-            Paragraph("Nome:", label_style),
-            Paragraph(str(order_data.get("client_name", "—")), value_style),
-            Paragraph("Documento:", label_style),
-            Paragraph(str(order_data.get("client_document", "—")), value_style),
-        ],
-        [
-            Paragraph("Telefone:", label_style),
-            Paragraph(client_phone, value_style),
-            Paragraph("Tel. Secundário:" if client_phone2 else "", label_style),
-            Paragraph(str(client_phone2 or ""), value_style),
-        ],
+    client_pairs = [
+        ("Nome",             order_data.get("client_name")),
+        ("CPF/CNPJ",         order_data.get("client_document")),
+        ("Telefone",         client_phone),
+        ("Tel. Secundário",  str(client_phone2) if client_phone2 else None),
+        ("Fazenda",          order_data.get("client_fazenda")),
+        ("Endereço",         order_data.get("client_address")),
+        ("Insc. Estadual",   order_data.get("client_inscricao_estadual")),
     ]
+    client_rows = _info_rows([(l,v) for l,v in client_pairs if v])
 
-    if client_fazenda:
-        client_data.append([
-            Paragraph("Fazenda:", label_style),
-            Paragraph(str(client_fazenda), value_style),
-            Paragraph("", label_style),
-            Paragraph("", value_style),
-        ])
-
-    if client_address:
-        client_data.append([
-            Paragraph("Endereço:", label_style),
-            Paragraph(str(client_address), ParagraphStyle("addr", parent=value_style, fontSize=8)),
-            Paragraph("", label_style),
-            Paragraph("", value_style),
-        ])
-
-    if client_ie:
-        client_data.append([
-            Paragraph("Insc. Estadual:", label_style),
-            Paragraph(str(client_ie), value_style),
-            Paragraph("", label_style),
-            Paragraph("", value_style),
-        ])
-
-    client_table = Table(
-        client_data,
-        colWidths=[col_w * 0.6, col_w * 1.4, col_w * 0.6, col_w * 1.4],
+    client_card = Table(
+        client_rows,
+        colWidths=[28*mm, half_w - 28*mm],
         style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), COLOR_LIGHT_GRAY),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.white),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BACKGROUND",    (0,0),(-1,-1), colors.white),
+            ("TOPPADDING",    (0,0),(-1,-1), 3),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 3),
+            ("LEFTPADDING",   (0,0),(-1,-1), 6),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 6),
+            ("LINEBELOW",     (0,0),(-1,-2), 0.3, C_BORDER),
+            ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
         ]),
     )
-    story.append(client_table)
-    story.append(Spacer(1, 4 * mm))
 
-    # ── MACHINE SECTION (if present) ──────────────────────────────────────────
-    if order_data.get("machine_model") or order_data.get("machine_brand"):
-        machine_header = Table(
-            [[Paragraph("  MÁQUINA / EQUIPAMENTO", section_header_style)]],
-            colWidths=[page_width],
-            rowHeights=[7 * mm],
-            style=TableStyle([
-                ("BACKGROUND", (0, 0), (-1, -1), COLOR_SECONDARY),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]),
-        )
-        story.append(machine_header)
+    # Máquina
+    machine_pairs = [
+        ("Marca",        order_data.get("machine_brand")),
+        ("Modelo",       order_data.get("machine_model")),
+        ("Nº de Série",  order_data.get("machine_serial")),
+        ("Ano",          str(order_data.get("machine_year")) if order_data.get("machine_year") else None),
+        ("Chassi",       order_data.get("machine_chassis")),
+        ("Placa",        order_data.get("machine_placa")),
+        ("Proprietário", order_data.get("machine_proprietario")),
+        ("Nº Motor",     order_data.get("machine_engine_number")),
+        ("Potência",     order_data.get("machine_horsepower")),
+    ]
+    machine_rows = _info_rows([(l,v) for l,v in machine_pairs if v])
 
-        machine_chassis = order_data.get("machine_chassis")
-        machine_placa = order_data.get("machine_placa")
-        machine_proprietario = order_data.get("machine_proprietario")
-        machine_year = order_data.get("machine_year")
-        machine_hp = order_data.get("machine_horsepower")
-        machine_engine = order_data.get("machine_engine_number")
-
-        machine_data = [
-            [
-                Paragraph("Marca:", label_style),
-                Paragraph(str(order_data.get("machine_brand", "—")), value_style),
-                Paragraph("Modelo:", label_style),
-                Paragraph(str(order_data.get("machine_model", "—")), value_style),
-            ],
-            [
-                Paragraph("Nº de Série:", label_style),
-                Paragraph(str(order_data.get("machine_serial") or "—"), value_style),
-                Paragraph("Ano:", label_style),
-                Paragraph(str(machine_year) if machine_year else "—", value_style),
-            ],
-        ]
-
-        if machine_chassis or machine_placa:
-            machine_data.append([
-                Paragraph("Chassi:", label_style),
-                Paragraph(str(machine_chassis or "—"), value_style),
-                Paragraph("Placa:", label_style),
-                Paragraph(str(machine_placa or "—"), value_style),
-            ])
-
-        if machine_proprietario:
-            machine_data.append([
-                Paragraph("Proprietário:", label_style),
-                Paragraph(str(machine_proprietario), value_style),
-                Paragraph("", label_style),
-                Paragraph("", value_style),
-            ])
-
-        if machine_engine or machine_hp:
-            machine_data.append([
-                Paragraph("Nº Motor:", label_style),
-                Paragraph(str(machine_engine or "—"), value_style),
-                Paragraph("Potência:", label_style),
-                Paragraph(str(machine_hp or "—"), value_style),
-            ])
-
-        machine_table = Table(
-            machine_data,
-            colWidths=[col_w * 0.55, col_w * 1.45, col_w * 0.55, col_w * 1.45],
-            style=TableStyle([
-                ("BACKGROUND", (0, 0), (-1, -1), COLOR_LIGHT_GRAY),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.white),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]),
-        )
-        story.append(machine_table)
-        story.append(Spacer(1, 4 * mm))
-
-    # ── ITEMS TABLE ───────────────────────────────────────────────────────────
-    items_header = Table(
-        [[Paragraph("  ITENS DA ORDEM DE SERVIÇO", section_header_style)]],
-        colWidths=[page_width],
-        rowHeights=[7 * mm],
+    machine_card = Table(
+        machine_rows,
+        colWidths=[28*mm, half_w - 28*mm],
         style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), COLOR_PRIMARY),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BACKGROUND",    (0,0),(-1,-1), colors.white),
+            ("TOPPADDING",    (0,0),(-1,-1), 3),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 3),
+            ("LEFTPADDING",   (0,0),(-1,-1), 6),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 6),
+            ("LINEBELOW",     (0,0),(-1,-2), 0.3, C_BORDER),
+            ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
         ]),
     )
-    story.append(items_header)
 
-    col_header_style = ParagraphStyle(
-        "ColHeader",
-        parent=styles["Normal"],
-        fontSize=8,
-        fontName="Helvetica-Bold",
-        textColor=colors.white,
-        alignment=TA_CENTER,
-    )
-    items_table_data = [
-        [
-            Paragraph("Tipo", col_header_style),
-            Paragraph("Descrição", col_header_style),
-            Paragraph("Qtd", col_header_style),
-            Paragraph("Vlr Unit.", col_header_style),
-            Paragraph("Total", col_header_style),
-        ]
-    ]
+    def _card_wrap(title: str, inner: Table, width: float) -> Table:
+        title_s = S("ct", fontSize=8, fontName="Helvetica-Bold", textColor=C_WHITE)
+        hdr = Table([[Paragraph(f"  {title}", title_s)]], colWidths=[width], rowHeights=[6*mm],
+                    style=TableStyle([
+                        ("BACKGROUND",    (0,0),(-1,-1), C_ACCENT),
+                        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+                        ("TOPPADDING",    (0,0),(-1,-1), 0),
+                        ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+                    ]))
+        outer = Table(
+            [[hdr], [inner]],
+            colWidths=[width],
+            style=TableStyle([
+                ("BOX",        (0,0),(-1,-1), 0.5, C_BORDER),
+                ("TOPPADDING",    (0,0),(-1,-1), 0),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+                ("LEFTPADDING",   (0,0),(-1,-1), 0),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+            ]),
+        )
+        return outer
+
+    client_wrapped  = _card_wrap("CLIENTE",             client_card,  half_w)
+    machine_wrapped = _card_wrap("MÁQUINA / EQUIPAMENTO", machine_card, half_w)
+
+    has_machine = order_data.get("machine_model") or order_data.get("machine_brand")
+    if has_machine:
+        cards_table = Table(
+            [[client_wrapped, Spacer(3*mm, 1), machine_wrapped]],
+            colWidths=[half_w, 3*mm, half_w],
+            style=TableStyle([
+                ("VALIGN",        (0,0),(-1,-1), "TOP"),
+                ("TOPPADDING",    (0,0),(-1,-1), 0),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+                ("LEFTPADDING",   (0,0),(-1,-1), 0),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+            ]),
+        )
+    else:
+        cards_table = Table(
+            [[client_wrapped]],
+            colWidths=[page_w],
+            style=TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),
+                              ("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0),
+                              ("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0)]),
+        )
+
+    story.append(cards_table)
+    story.append(Spacer(1, 4*mm))
+
+    # ════════════════════════════════════════════════════════════════════════
+    # 5. TABELA DE ITENS
+    # ════════════════════════════════════════════════════════════════════════
+    story.append(_section_header("ITENS DA ORDEM DE SERVIÇO", page_w))
 
     _TYPE_LABELS = {"SERVICO": "Serviço", "PECA": "Peça", "DESLOCAMENTO": "Deslocamento"}
+    _TYPE_COLORS = {
+        "SERVICO":      colors.HexColor("#1565C0"),
+        "PECA":         colors.HexColor("#E65100"),
+        "DESLOCAMENTO": colors.HexColor("#6A1B9A"),
+    }
 
-    items = order_data.get("items", [])
-    for i, item in enumerate(items):
-        row_bg = colors.white if i % 2 == 0 else COLOR_LIGHT_GRAY
-        item_type_label = _TYPE_LABELS.get(item.get("item_type", ""), "Outro")
-        qty = item.get("quantity", 0)
-        unit_price = item.get("unit_price", 0)
-        total_price = item.get("total_price", 0)
+    col_tipo_w  = 28*mm
+    col_desc_w  = page_w - 28*mm - 18*mm - 26*mm - 26*mm
+    col_qty_w   = 18*mm
+    col_unit_w  = 26*mm
+    col_total_w = 26*mm
 
-        items_table_data.append([
-            Paragraph(item_type_label, ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_CENTER)),
-            Paragraph(str(item.get("description", "")), ParagraphStyle("cell", parent=styles["Normal"], fontSize=8)),
-            Paragraph(f"{float(qty):.2f}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
-            Paragraph(f"R$ {_fmt_currency(unit_price)}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
-            Paragraph(f"R$ {_fmt_currency(total_price)}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
+    items_data = [[
+        Paragraph("TIPO",       col_hdr_s),
+        Paragraph("DESCRIÇÃO",  col_hdr_s),
+        Paragraph("QTD",        S("chr", fontSize=8, fontName="Helvetica-Bold", textColor=C_WHITE, alignment=TA_RIGHT)),
+        Paragraph("UNIT.",      S("chr", fontSize=8, fontName="Helvetica-Bold", textColor=C_WHITE, alignment=TA_RIGHT)),
+        Paragraph("TOTAL",      S("chr", fontSize=8, fontName="Helvetica-Bold", textColor=C_WHITE, alignment=TA_RIGHT)),
+    ]]
+
+    for item in order_data.get("items", []):
+        itype = str(item.get("item_type", ""))
+        type_color = _TYPE_COLORS.get(itype, C_GRAY)
+        type_label = _TYPE_LABELS.get(itype, itype)
+        qty   = float(item.get("quantity", 0))
+        unit  = item.get("unit_price", 0)
+        total = item.get("total_price", 0)
+
+        type_s = S(f"it_{itype}", fontSize=7.5, fontName="Helvetica-Bold", textColor=type_color, alignment=TA_CENTER)
+
+        items_data.append([
+            Paragraph(type_label, type_s),
+            Paragraph(str(item.get("description", "")), cell_s),
+            Paragraph(f"{qty:.2f}", cell_r),
+            Paragraph(f"R$ {_fmt_currency(unit)}",  cell_r),
+            Paragraph(f"R$ {_fmt_currency(total)}", cell_r),
         ])
 
-    items_col_widths = [
-        20 * mm,
-        page_width - 80 * mm,
-        20 * mm,
-        25 * mm,
-        25 * mm,
-    ]
-
-    items_style = [
-        ("BACKGROUND", (0, 0), (-1, 0), COLOR_PRIMARY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-        ("TOPPADDING", (0, 0), (-1, 0), 6),
-        ("GRID", (0, 1), (-1, -1), 0.5, colors.HexColor("#d5d8dc")),
-        ("TOPPADDING", (0, 1), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    # Alternating row colors
-    for idx in range(1, len(items_table_data)):
-        if idx % 2 == 0:
-            items_style.append(("BACKGROUND", (0, idx), (-1, idx), COLOR_LIGHT_GRAY))
+    items_style = TableStyle([
+        # Cabeçalho
+        ("BACKGROUND",    (0,0),(-1,0),  C_PRIMARY),
+        ("TEXTCOLOR",     (0,0),(-1,0),  C_WHITE),
+        ("TOPPADDING",    (0,0),(-1,0),  5),
+        ("BOTTOMPADDING", (0,0),(-1,0),  5),
+        # Linhas de dados
+        ("FONTSIZE",      (0,1),(-1,-1), 8),
+        ("TOPPADDING",    (0,1),(-1,-1), 4),
+        ("BOTTOMPADDING", (0,1),(-1,-1), 4),
+        ("LEFTPADDING",   (0,0),(-1,-1), 6),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 6),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+        # Linhas separadoras
+        ("LINEBELOW",     (0,0),(-1,-1), 0.3, C_BORDER),
+        ("BOX",           (0,0),(-1,-1), 0.5, C_BORDER),
+    ])
+    # Zebra nas linhas ímpares
+    for i in range(1, len(items_data)):
+        if i % 2 == 0:
+            items_style.add("BACKGROUND", (0,i), (-1,i), C_ROW_ALT)
 
     items_table = Table(
-        items_table_data,
-        colWidths=items_col_widths,
-        style=TableStyle(items_style),
+        items_data,
+        colWidths=[col_tipo_w, col_desc_w, col_qty_w, col_unit_w, col_total_w],
+        style=items_style,
         repeatRows=1,
     )
     story.append(items_table)
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 4*mm))
 
-    # ── FINANCIAL SUMMARY ─────────────────────────────────────────────────────
-    def _to_decimal(v) -> Decimal:
-        if v is None:
-            return Decimal("0.00")
+    # ════════════════════════════════════════════════════════════════════════
+    # 6. BLOCO DE TOTAIS
+    # ════════════════════════════════════════════════════════════════════════
+    def _to_d(v) -> Decimal:
         try:
-            return Decimal(str(v))
+            return Decimal(str(v)) if v is not None else Decimal("0")
         except Exception:
-            return Decimal("0.00")
+            return Decimal("0")
 
-    total_services = _to_decimal(order_data.get("total_services"))
-    total_parts = _to_decimal(order_data.get("total_parts"))
-    total_displacement = _to_decimal(order_data.get("total_displacement"))
-    total_discount = _to_decimal(order_data.get("total_discount"))
-    total_amount = _to_decimal(order_data.get("total_amount"))
-    # Garante total correto mesmo se total_amount não foi calculado
-    if total_amount == Decimal("0.00"):
+    total_services    = _to_d(order_data.get("total_services"))
+    total_parts       = _to_d(order_data.get("total_parts"))
+    total_displacement= _to_d(order_data.get("total_displacement"))
+    total_discount    = _to_d(order_data.get("total_discount"))
+    total_amount      = _to_d(order_data.get("total_amount"))
+    if total_amount == Decimal("0"):
         total_amount = total_services + total_parts + total_displacement - total_discount
 
-    def _sumval(txt: str, color=None) -> Paragraph:
-        style = ParagraphStyle(
-            "sumval",
-            parent=styles["Normal"],
-            fontSize=9,
-            alignment=TA_RIGHT,
-            textColor=color or colors.black,
+    SUMMARY_W  = 120*mm
+    LABEL_W    = 72*mm
+    VALUE_W    = SUMMARY_W - LABEL_W
+
+    summary_rows = [
+        [Paragraph("Subtotal Serviços:",    total_lbl), Paragraph(f"R$ {_fmt_currency(total_services)}",     total_val)],
+        [Paragraph("Subtotal Peças:",       total_lbl), Paragraph(f"R$ {_fmt_currency(total_parts)}",        total_val)],
+    ]
+    if total_displacement > 0:
+        summary_rows.append(
+            [Paragraph("Subtotal Deslocamento:", total_lbl), Paragraph(f"R$ {_fmt_currency(total_displacement)}", total_val)]
         )
-        return Paragraph(txt, style)
+    if total_discount > 0:
+        disc_val_s = S("dv", fontSize=9, fontName="Helvetica", textColor=C_ORANGE, alignment=TA_RIGHT)
+        summary_rows.append(
+            [Paragraph("Desconto:", total_lbl), Paragraph(f"- R$ {_fmt_currency(total_discount)}", disc_val_s)]
+        )
+    summary_rows.append(
+        [Paragraph("TOTAL GERAL:", grand_lbl), Paragraph(f"R$ {_fmt_currency(total_amount)}", grand_val)]
+    )
 
-    summary_data = [
-        [
-            Paragraph("Subtotal Serviços:", label_style),
-            _sumval(f"R$ {_fmt_currency(total_services)}"),
-        ],
-        [
-            Paragraph("Subtotal Peças:", label_style),
-            _sumval(f"R$ {_fmt_currency(total_parts)}"),
-        ],
-    ]
-
-    # Linha de deslocamento só aparece se houver valor
-    if Decimal(str(total_displacement)) > 0:
-        summary_data.append([
-            Paragraph("Subtotal Deslocamento:", label_style),
-            _sumval(f"R$ {_fmt_currency(total_displacement)}"),
-        ])
-
-    if total_discount > Decimal("0.00"):
-        summary_data.append([
-            Paragraph("Desconto:", label_style),
-            _sumval(f"- R$ {_fmt_currency(total_discount)}", color=colors.HexColor("#c0392b")),
-        ])
-
-    summary_data += [
-        [
-            Paragraph("TOTAL:", ParagraphStyle("totallabel", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY)),
-            Paragraph(f"R$ {_fmt_currency(total_amount)}", ParagraphStyle("totalval", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY, alignment=TA_RIGHT)),
-        ],
-    ]
-
-    # Largura do bloco de resumo (lado direito): 130 mm
-    _SUMMARY_WIDTH = 130 * mm
-    _LABEL_W = 78 * mm
-    _VALUE_W = 52 * mm  # _LABEL_W + _VALUE_W == _SUMMARY_WIDTH
-
-    summary_table = Table(
-        summary_data,
-        colWidths=[_LABEL_W, _VALUE_W],
+    summary_inner = Table(
+        summary_rows, colWidths=[LABEL_W, VALUE_W],
         style=TableStyle([
-            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-            ("LINEABOVE", (0, -1), (-1, -1), 1.5, COLOR_PRIMARY),
-            ("BACKGROUND", (0, -1), (-1, -1), COLOR_LIGHT_GRAY),
-            ("TOPPADDING", (0, -1), (-1, -1), 7),
-            ("BOTTOMPADDING", (0, -1), (-1, -1), 7),
+            ("BACKGROUND",    (0,0),(-1,-2), colors.white),
+            ("BACKGROUND",    (0,-1),(-1,-1), C_TOTAL_BG),
+            ("TOPPADDING",    (0,0),(-1,-1), 4),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ("LEFTPADDING",   (0,0),(-1,-1), 8),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 8),
+            ("LINEABOVE",     (0,-1),(-1,-1), 1.5, C_PRIMARY),
+            ("LINEBELOW",     (0,0),(-1,-2), 0.3, C_BORDER),
+            ("TOPPADDING",    (0,-1),(-1,-1), 7),
+            ("BOTTOMPADDING", (0,-1),(-1,-1), 7),
+            ("BOX",           (0,0),(-1,-1), 0.5, C_BORDER),
         ]),
     )
-    # Empurra o bloco para a direita (coluna esquerda vazia)
+
     outer_summary = Table(
-        [[Paragraph(""), summary_table]],
-        colWidths=[page_width - _SUMMARY_WIDTH, _SUMMARY_WIDTH],
+        [[Paragraph("", val), summary_inner]],
+        colWidths=[page_w - SUMMARY_W, SUMMARY_W],
         style=TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("VALIGN",        (0,0),(-1,-1), "TOP"),
+            ("TOPPADDING",    (0,0),(-1,-1), 0),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+            ("LEFTPADDING",   (0,0),(-1,-1), 0),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 0),
         ]),
     )
     story.append(outer_summary)
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 5*mm))
 
-    # ── PIX PAYMENT BLOCK (if configured) ────────────────────────────────────
+    # ════════════════════════════════════════════════════════════════════════
+    # 7. BLOCO PIX (condicional)
+    # ════════════════════════════════════════════════════════════════════════
     pix_key = order_data.get("pix_key")
     if pix_key and total_amount > 0:
         try:
             from app.modules.reports.pix_utils import build_pix_payload, build_pix_qrcode_png
-
             pix_payload = build_pix_payload(
                 key=pix_key,
                 beneficiary_name=order_data.get("tenant_name", "Oficina") or "Oficina",
                 city=order_data.get("tenant_city", "BRASIL") or "BRASIL",
                 amount=float(total_amount),
-                description=f"OS#{order_data.get('os_number', '')}",
+                description=f"OS{order_data.get('os_number', '')}",
             )
             qr_png = build_pix_qrcode_png(pix_payload, box_size=4)
-            qr_img = Image(io.BytesIO(qr_png), width=28 * mm, height=28 * mm)
-
-            pix_header_style = ParagraphStyle(
-                "pixheader",
-                parent=styles["Normal"],
-                fontSize=9,
-                fontName="Helvetica-Bold",
-                textColor=colors.HexColor("#1a6b3a"),
-                alignment=TA_LEFT,
-            )
-            pix_key_style = ParagraphStyle(
-                "pixkey",
-                parent=styles["Normal"],
-                fontSize=8,
-                fontName="Helvetica",
-                textColor=colors.black,
-            )
-            pix_small_style = ParagraphStyle(
-                "pixsmall",
-                parent=styles["Normal"],
-                fontSize=7,
-                fontName="Helvetica",
-                textColor=COLOR_DARK_GRAY,
-            )
+            qr_img = Image(io.BytesIO(qr_png), width=28*mm, height=28*mm)
 
             pix_key_type = order_data.get("pix_key_type") or "PIX"
             pix_info_rows = [
-                [Paragraph("💚  PAGAMENTO VIA PIX", pix_header_style)],
-                [Spacer(1, 2 * mm)],
-                [Paragraph(f"<b>Tipo:</b> {pix_key_type}", pix_key_style)],
-                [Paragraph(f"<b>Chave:</b> {pix_key}", pix_key_style)],
-                [Spacer(1, 1 * mm)],
-                [Paragraph(f"Valor: R$ {_fmt_currency(total_amount)}", pix_key_style)],
-                [Spacer(1, 2 * mm)],
-                [Paragraph("Escaneie o QR Code ou copie a chave para pagar.", pix_small_style)],
+                [Paragraph("PAGAMENTO VIA PIX", pix_hdr_s)],
+                [Spacer(1, 1.5*mm)],
+                [Paragraph(f"<b>Tipo:</b> {pix_key_type}   <b>Chave:</b> {pix_key}", pix_val_s)],
+                [Paragraph(f"<b>Valor:</b> R$ {_fmt_currency(total_amount)}", pix_val_s)],
+                [Spacer(1, 1.5*mm)],
+                [Paragraph("Escaneie o QR Code ou copie a chave no app do banco.", pix_sm_s)],
             ]
-
-            pix_info_cell = Table(
-                pix_info_rows,
-                colWidths=[page_width - 38 * mm],
+            pix_info_cell = Table(pix_info_rows, colWidths=[page_w - 38*mm],
                 style=TableStyle([
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                    ("TOPPADDING", (0, 0), (-1, -1), 1),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ]),
-            )
+                    ("LEFTPADDING",   (0,0),(-1,-1), 6),
+                    ("TOPPADDING",    (0,0),(-1,-1), 1),
+                    ("BOTTOMPADDING", (0,0),(-1,-1), 1),
+                ]))
 
             pix_block = Table(
                 [[qr_img, pix_info_cell]],
-                colWidths=[34 * mm, page_width - 34 * mm],
+                colWidths=[34*mm, page_w - 34*mm],
                 style=TableStyle([
-                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f0faf4")),
-                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#27ae60")),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (0, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (0, -1), 4),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("BACKGROUND",    (0,0),(-1,-1), C_ACCENT_LT),
+                    ("BOX",           (0,0),(-1,-1), 1, C_ACCENT),
+                    ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+                    ("LEFTPADDING",   (0,0),(0,-1),  4),
+                    ("TOPPADDING",    (0,0),(-1,-1), 6),
+                    ("BOTTOMPADDING", (0,0),(-1,-1), 6),
                 ]),
             )
-
             story.append(pix_block)
-            story.append(Spacer(1, 6 * mm))
+            story.append(Spacer(1, 5*mm))
         except Exception:
-            # Se falhar (qrcode não instalado, etc.) não interrompe o PDF
-            story.append(Spacer(1, 4 * mm))
-    else:
-        story.append(Spacer(1, 4 * mm))
+            story.append(Spacer(1, 2*mm))
 
-    # ── DIAGNOSIS & SOLUTION (if present) ────────────────────────────────────
+    # ════════════════════════════════════════════════════════════════════════
+    # 8. DIAGNÓSTICO & SOLUÇÃO
+    # ════════════════════════════════════════════════════════════════════════
     if order_data.get("diagnosis") or order_data.get("solution"):
-        story.append(HRFlowable(width=page_width, thickness=0.5, color=COLOR_DARK_GRAY))
-        story.append(Spacer(1, 3 * mm))
-
+        story.append(_section_header("DIAGNÓSTICO E SOLUÇÃO", page_w))
+        ds_rows = []
         if order_data.get("diagnosis"):
-            story.append(Paragraph("Diagnóstico:", label_style))
-            story.append(Paragraph(str(order_data["diagnosis"]), value_style))
-            story.append(Spacer(1, 3 * mm))
-
+            ds_rows.append([Paragraph("Diagnóstico:", lbl), Paragraph(str(order_data["diagnosis"]), diag_s)])
         if order_data.get("solution"):
-            story.append(Paragraph("Solução Aplicada:", label_style))
-            story.append(Paragraph(str(order_data["solution"]), value_style))
-            story.append(Spacer(1, 3 * mm))
+            ds_rows.append([Paragraph("Solução:",     lbl), Paragraph(str(order_data["solution"]),  diag_s)])
 
-    # ── SIGNATURES ────────────────────────────────────────────────────────────
-    story.append(Spacer(1, 10 * mm))
-    story.append(HRFlowable(width=page_width, thickness=0.5, color=COLOR_DARK_GRAY))
-    story.append(Spacer(1, 4 * mm))
+        ds_table = Table(ds_rows, colWidths=[24*mm, page_w - 24*mm],
+            style=TableStyle([
+                ("BACKGROUND",    (0,0),(-1,-1), C_ROW_ALT),
+                ("TOPPADDING",    (0,0),(-1,-1), 5),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+                ("LEFTPADDING",   (0,0),(-1,-1), 8),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 8),
+                ("LINEBELOW",     (0,0),(-1,-2), 0.3, C_BORDER),
+                ("BOX",           (0,0),(-1,-1), 0.5, C_BORDER),
+                ("VALIGN",        (0,0),(-1,-1), "TOP"),
+            ]))
+        story.append(ds_table)
+        story.append(Spacer(1, 5*mm))
 
-    sig_line = "_" * 45
-    sig_label_style = ParagraphStyle(
-        "siglabel",
-        parent=styles["Normal"],
-        fontSize=8,
-        textColor=COLOR_DARK_GRAY,
-        alignment=TA_CENTER,
-    )
-    sig_meta_style = ParagraphStyle(
-        "sigmeta",
-        parent=styles["Normal"],
-        fontSize=7,
-        textColor=COLOR_DARK_GRAY,
-        alignment=TA_CENTER,
-    )
+    # ════════════════════════════════════════════════════════════════════════
+    # 9. ÁREA DE ASSINATURAS
+    # ════════════════════════════════════════════════════════════════════════
+    story.append(HRFlowable(width=page_w, thickness=0.5, color=C_BORDER))
+    story.append(Spacer(1, 5*mm))
 
-    half_w = page_width / 2
+    half_sig = page_w / 2
 
-    # ── Célula do Técnico ─────────────────────────────────────────────────────
+    # Técnico
     sig_url = order_data.get("technician_signature_url")
-    sig_img = _load_signature_image(sig_url, width=130, height=55)
-    technician_name = str(order_data.get("technician_name") or "")
+    sig_img = _load_image(sig_url, width=130, height=55)
+    tech_name = str(order_data.get("technician_name") or "")
 
     if sig_img:
-        tecnico_rows = [
-            [sig_img],
-            [Paragraph(technician_name, sig_meta_style)],
-            [Paragraph("Técnico Responsável", sig_label_style)],
-        ]
+        tech_rows: list = [[sig_img]]
     else:
-        tecnico_rows = [
-            [Spacer(1, 14 * mm)],
-            [Paragraph(sig_line, ParagraphStyle("sig", parent=styles["Normal"], fontSize=9, alignment=TA_CENTER))],
-            [Paragraph(technician_name, sig_meta_style)] if technician_name else [Paragraph("", sig_meta_style)],
-            [Paragraph("Assinatura do Técnico", sig_label_style)],
+        tech_rows = [
+            [Spacer(1, 14*mm)],
+            [HRFlowable(width=half_sig - 20*mm, thickness=0.8, color=C_GRAY)],
         ]
+    if tech_name:
+        tech_rows.append([Paragraph(tech_name, sig_name_s)])
+    tech_rows.append([Paragraph("Técnico Responsável", sig_lbl_s)])
 
-    tecnico_cell = Table(
-        tecnico_rows,
-        colWidths=[half_w],
+    tech_cell = Table(tech_rows, colWidths=[half_sig],
         style=TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]),
-    )
+            ("ALIGN",         (0,0),(-1,-1), "CENTER"),
+            ("VALIGN",        (0,0),(-1,-1), "BOTTOM"),
+            ("TOPPADDING",    (0,0),(-1,-1), 2),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+        ]))
 
-    # ── Célula do Cliente ─────────────────────────────────────────────────────
-    client_sig_b64 = order_data.get("budget_signature")        # base64 data URI
-    client_sig_img = _load_signature_image(client_sig_b64, width=130, height=55)
+    # Cliente
+    client_sig_b64 = order_data.get("budget_signature")
+    client_sig_img = _load_image(client_sig_b64, width=130, height=55)
     signer_name = str(order_data.get("budget_signer_name") or "")
-    signer_doc = str(order_data.get("budget_signer_document") or "")
+    signer_doc  = str(order_data.get("budget_signer_document") or "")
     approved_at = order_data.get("budget_approved_at")
 
     if client_sig_img:
-        cliente_rows: list = [
-            [client_sig_img],
-        ]
+        client_rows: list = [[client_sig_img]]
         if signer_name:
-            cliente_rows.append([Paragraph(signer_name, sig_meta_style)])
+            client_rows.append([Paragraph(signer_name, sig_name_s)])
         if signer_doc:
-            cliente_rows.append([Paragraph(f"Doc: {signer_doc}", sig_meta_style)])
+            client_rows.append([Paragraph(f"Doc: {signer_doc}", sig_lbl_s)])
         if approved_at:
-            cliente_rows.append([Paragraph(f"Aprovado em {_fmt_datetime(approved_at)}", sig_meta_style)])
-        cliente_rows.append([Paragraph("Assinatura do Cliente", sig_label_style)])
+            client_rows.append([Paragraph(f"Aprovado em {_fmt_datetime(approved_at)}", sig_lbl_s)])
+        client_rows.append([Paragraph("Assinatura do Cliente", sig_lbl_s)])
     else:
-        # Sem assinatura digital: linha em branco para assinar fisicamente
-        cliente_rows = [
-            [Spacer(1, 14 * mm)],
-            [Paragraph(sig_line, ParagraphStyle("sig", parent=styles["Normal"], fontSize=9, alignment=TA_CENTER))],
-            [Paragraph(signer_name, sig_meta_style)] if signer_name else [Paragraph("", sig_meta_style)],
-            [Paragraph("Assinatura do Cliente", sig_label_style)],
+        client_rows = [
+            [Spacer(1, 14*mm)],
+            [HRFlowable(width=half_sig - 20*mm, thickness=0.8, color=C_GRAY)],
+            [Paragraph(signer_name, sig_name_s)] if signer_name else [Spacer(1, 1*mm)],
+            [Paragraph("Assinatura do Cliente", sig_lbl_s)],
         ]
 
-    cliente_cell = Table(
-        cliente_rows,
-        colWidths=[half_w],
+    client_cell = Table(client_rows, colWidths=[half_sig],
         style=TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]),
-    )
+            ("ALIGN",         (0,0),(-1,-1), "CENTER"),
+            ("VALIGN",        (0,0),(-1,-1), "BOTTOM"),
+            ("TOPPADDING",    (0,0),(-1,-1), 2),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+        ]))
 
     sig_table = Table(
-        [[tecnico_cell, cliente_cell]],
-        colWidths=[half_w, half_w],
+        [[tech_cell, client_cell]], colWidths=[half_sig, half_sig],
         style=TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("LINEBEFORE", (1, 0), (1, -1), 0.5, COLOR_LIGHT_GRAY),
-        ]),
-    )
+            ("VALIGN",      (0,0),(-1,-1), "BOTTOM"),
+            ("LINEBEFORE",  (1,0),(1,-1),  0.5, C_BORDER),
+            ("LEFTPADDING", (0,0),(-1,-1), 0),
+            ("RIGHTPADDING",(0,0),(-1,-1), 0),
+            ("TOPPADDING",  (0,0),(-1,-1), 0),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 0),
+        ]))
     story.append(sig_table)
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 5*mm))
 
-    # ── FOOTER ────────────────────────────────────────────────────────────────
+    # ════════════════════════════════════════════════════════════════════════
+    # 10. FOOTER
+    # ════════════════════════════════════════════════════════════════════════
     generated_at = order_data.get("generated_at") or datetime.now()
     footer_text = (
-        f"Documento gerado em {_fmt_datetime(generated_at)} | "
-        f"{tenant_name} | Powered by AutoMaster"
+        f"Documento gerado em {_fmt_datetime(generated_at)}  ·  "
+        f"{tenant_name}  ·  Powered by AutoMaster"
     )
-    story.append(HRFlowable(width=page_width, thickness=0.5, color=COLOR_LIGHT_GRAY))
-    story.append(Spacer(1, 2 * mm))
-    story.append(Paragraph(footer_text, footer_style))
+    story.append(HRFlowable(width=page_w, thickness=0.3, color=C_BORDER))
+    story.append(Spacer(1, 2*mm))
+    story.append(Paragraph(footer_text, footer_s))
 
     doc.build(story)
     return buffer.getvalue()
