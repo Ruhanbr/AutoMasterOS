@@ -11,7 +11,7 @@ Create Date: 2026-05-26
 from alembic import op
 
 revision = "014"
-down_revision = "013"
+down_revision = "013_pix_key"
 branch_labels = None
 depends_on = None
 
