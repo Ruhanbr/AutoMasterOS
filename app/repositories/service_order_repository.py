@@ -167,7 +167,10 @@ class ServiceOrderRepository(BaseRepository[ServiceOrder]):
         ).group_by(ServiceOrder.status)
 
         count_result = await self.session.execute(count_stmt)
-        by_status = {r.status: r.qty for r in count_result.all()}
+        by_status = {
+            (r.status.value if hasattr(r.status, "value") else str(r.status)): r.qty
+            for r in count_result.all()
+        }
 
         return {
             "total_os": row.total_os,
