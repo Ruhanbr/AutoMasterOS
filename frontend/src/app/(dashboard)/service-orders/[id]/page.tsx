@@ -489,7 +489,7 @@ export default function ServiceOrderDetailPage() {
                             )}
                           </TableCell>
                           <TableCell className="font-medium">{item.description}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">{Number(item.quantity).toFixed(2)}</TableCell>
                           <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
                           <TableCell className="text-right font-semibold">
                             {formatCurrency(item.total_price)}
