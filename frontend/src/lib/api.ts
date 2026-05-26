@@ -145,6 +145,11 @@ api.interceptors.response.use(
   },
 );
 
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+export const dashboardApi = {
+  get: () => api.get('/dashboard'),
+};
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: async (email: string, password: string, tenant_id?: string) => {

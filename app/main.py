@@ -115,11 +115,13 @@ def create_application() -> FastAPI:
     from app.modules.reports.router import router as reports_router
     from app.modules.stock.router import router as stock_router
     from app.routers.public import router as public_router
+    from app.routers.dashboard import router as dashboard_router
 
     app.include_router(stock_router, prefix=prefix)
     app.include_router(financial_router, prefix=prefix)
     app.include_router(orchestration_router, prefix=prefix)
     app.include_router(reports_router, prefix=prefix)
+    app.include_router(dashboard_router, prefix=prefix)
     # Router público — sem autenticação (portal do cliente)
     app.include_router(public_router, prefix=prefix)
 
