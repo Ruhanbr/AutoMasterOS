@@ -96,29 +96,16 @@ async def create_user(
             detail="Já existe um usuário com este e-mail nesta oficina.",
         )
 
-    from app.services.password_service import PasswordService
-    from app.services.email_service import send_temp_password
-
-    # Gera senha temporária automaticamente (ignora payload.password)
-    senha_temp_gerada = PasswordService.gerar_senha_temporaria()
-    is_temp = True
-
     user = await repo.create(
         tenant_id=tenant_id,
         email=payload.email,
-        hashed_password=hash_password(senha_temp_gerada),
+        hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
         role=payload.role,
         active=True,
-        precisa_trocar_senha=is_temp,
+        precisa_trocar_senha=False,
     )
     await session.commit()
-
-    # Envia email com senha temporária (não bloqueia a resposta)
-    try:
-        await send_temp_password(user.email, user.full_name, senha_temp_gerada, tenant_id=str(tenant_id))
-    except Exception as e:
-        logger.warning("email_falhou", error=str(e), user_id=str(user.id))
 
     return UserResponse.model_validate(user)
 
