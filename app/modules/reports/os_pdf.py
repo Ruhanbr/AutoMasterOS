@@ -282,21 +282,18 @@ def generate_os_pdf(order_data: dict) -> bytes:
         ("Finalização", _fmt_datetime(order_data.get("finished_at"))),
         ("Técnico",     str(order_data.get("technician_name") or "—")),
     ]
-    meta_cells = []
-    for mlabel, mval in meta_items:
-        meta_cells.append([
-            Paragraph(mlabel.upper(), meta_lbl_s),
-            Paragraph(mval, meta_s),
-        ])
-
     meta_col_w = page_w / len(meta_items)
     meta_data  = [
-        [Table(mc, colWidths=[meta_col_w], style=TableStyle([
-            ("LEFTPADDING",   (0,0),(-1,-1), 8),
-            ("RIGHTPADDING",  (0,0),(-1,-1), 4),
-            ("TOPPADDING",    (0,0),(-1,-1), 5),
-            ("BOTTOMPADDING", (0,0),(-1,-1), 5),
-        ])) for mc in meta_cells]
+        [Table(
+            [[Paragraph(mlabel.upper(), meta_lbl_s)], [Paragraph(mval, meta_s)]],
+            colWidths=[meta_col_w],
+            style=TableStyle([
+                ("LEFTPADDING",   (0,0),(-1,-1), 8),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 4),
+                ("TOPPADDING",    (0,0),(-1,-1), 4),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ])
+        ) for mlabel, mval in meta_items]
     ]
     meta_table = Table(meta_data, colWidths=[meta_col_w]*len(meta_items),
         style=TableStyle([
