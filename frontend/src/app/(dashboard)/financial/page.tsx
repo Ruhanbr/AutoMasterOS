@@ -35,9 +35,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { PageSpinner } from '@/components/ui/spinner';
-import { financialApi } from '@/lib/api';
+import { financialApi, usersApi } from '@/lib/api';
 import { formatCurrency, formatDateOnly } from '@/lib/utils';
-import type { FinancialEntry, FinancialEntryListResponse, FinancialSummary, EntryType } from '@/types';
+import type { FinancialEntry, FinancialEntryListResponse, FinancialSummary, EntryType, User } from '@/types';
 import type { AxiosError } from 'axios';
 
 const expenseSchema = z.object({
@@ -100,16 +100,26 @@ export default function FinancialPage() {
   const [entryTypeFilter, setEntryTypeFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [technicianId, setTechnicianId] = useState('');
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const pageSize = 15;
+
+  // Carrega lista de técnicos para o filtro
+  const { data: techniciansData } = useQuery<{ items: User[] }>({
+    queryKey: ['users-technicians'],
+    queryFn: async () => (await usersApi.list({ role: 'TECNICO', active_only: true })).data,
+    staleTime: 60_000,
+  });
+  const technicians = techniciansData?.items ?? [];
 
   const summaryParams = {
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
+    technician_user_id: technicianId || undefined,
   };
 
   const { data: summary } = useQuery<FinancialSummary>({
-    queryKey: ['financial-summary', dateFrom, dateTo],
+    queryKey: ['financial-summary', dateFrom, dateTo, technicianId],
     queryFn: async () => {
       const res = await financialApi.summary(summaryParams);
       return res.data;
@@ -117,12 +127,13 @@ export default function FinancialPage() {
   });
 
   const { data, isLoading } = useQuery<FinancialEntryListResponse>({
-    queryKey: ['financial', entryTypeFilter, dateFrom, dateTo, page],
+    queryKey: ['financial', entryTypeFilter, dateFrom, dateTo, technicianId, page],
     queryFn: async () => {
       const res = await financialApi.list({
         entry_type: entryTypeFilter || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        technician_user_id: technicianId || undefined,
         page,
         page_size: pageSize,
       });
@@ -169,6 +180,7 @@ export default function FinancialPage() {
         entry_type: entryTypeFilter || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        technician_user_id: technicianId || undefined,
       });
       const url = URL.createObjectURL(
         new Blob([res.data], {
@@ -260,6 +272,22 @@ export default function FinancialPage() {
               className="w-40"
             />
           </div>
+          {technicians.length > 0 && (
+            <div>
+              <Label htmlFor="technician_filter" className="text-xs text-gray-500 mb-1 block">Técnico</Label>
+              <Select
+                id="technician_filter"
+                value={technicianId}
+                onChange={(e) => { setTechnicianId(e.target.value); setPage(1); }}
+                className="w-48"
+              >
+                <option value="">Todos os técnicos</option>
+                {technicians.map((t) => (
+                  <option key={t.id} value={t.id}>{t.full_name}</option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4" />

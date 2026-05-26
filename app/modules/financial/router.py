@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -27,13 +28,14 @@ async def list_financial_entries(
     entry_type: Optional[EntryType] = Query(None),
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
+    technician_user_id: Optional[uuid.UUID] = Query(None, description="Filtrar por técnico (apenas ADMIN)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> FinancialEntryListResponse:
     try:
         # TECNICO vê apenas lançamentos vinculados às suas próprias OS
         os_filter = get_os_tenant_filter(current_user)
-        technician_user_id = os_filter.get("technician_user_id")
+        effective_technician = os_filter.get("technician_user_id") or technician_user_id
 
         svc = FinancialService(session)
         return await svc.list_entries(
@@ -43,7 +45,7 @@ async def list_financial_entries(
             date_to=date_to,
             page=page,
             page_size=page_size,
-            technician_user_id=technician_user_id,
+            technician_user_id=effective_technician,
         )
     except AutoMasterException as e:
         raise to_http_exception(e)
@@ -76,18 +78,19 @@ async def get_financial_summary(
     current_user: CurrentUser,
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
+    technician_user_id: Optional[uuid.UUID] = Query(None, description="Filtrar por técnico (apenas ADMIN)"),
 ) -> FinancialSummaryResponse:
     try:
         # TECNICO vê apenas resumo dos seus próprios lançamentos
         os_filter = get_os_tenant_filter(current_user)
-        technician_user_id = os_filter.get("technician_user_id")
+        effective_technician = os_filter.get("technician_user_id") or technician_user_id
 
         svc = FinancialService(session)
         return await svc.get_summary(
             tenant_id,
             date_from=date_from,
             date_to=date_to,
-            technician_user_id=technician_user_id,
+            technician_user_id=effective_technician,
         )
     except AutoMasterException as e:
         raise to_http_exception(e)

@@ -251,12 +251,12 @@ export const stockApi = {
 
 // ─── Financial ────────────────────────────────────────────────────────────────
 export const financialApi = {
-  list: (params?: { entry_type?: string; date_from?: string; date_to?: string; page?: number; page_size?: number }) =>
+  list: (params?: { entry_type?: string; date_from?: string; date_to?: string; technician_user_id?: string; page?: number; page_size?: number }) =>
     api.get('/financial', { params }),
-  summary: (params?: { date_from?: string; date_to?: string }) =>
+  summary: (params?: { date_from?: string; date_to?: string; technician_user_id?: string }) =>
     api.get('/financial/summary', { params }),
   createExpense: (data: unknown) => api.post('/financial/expenses', data),
-  exportExcel: (params?: { entry_type?: string; date_from?: string; date_to?: string }) =>
+  exportExcel: (params?: { entry_type?: string; date_from?: string; date_to?: string; technician_user_id?: string }) =>
     api.get('/financial/report/excel', { params, responseType: 'blob' }),
 };
 
