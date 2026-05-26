@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -76,8 +76,17 @@ type EditClientForm = z.infer<typeof editClientSchema>;
 export default function ClientsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showInactive, setShowInactive] = useState(false);
+
+  // Debounce: dispara busca 350ms após parar de digitar
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState<Client | null>(null);
@@ -85,10 +94,10 @@ export default function ClientsPage() {
 
   // ── List query ───────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery<PaginatedResponse<Client>>({
-    queryKey: ['clients', search, page, showInactive],
+    queryKey: ['clients', debouncedSearch, page, showInactive],
     queryFn: async () => {
       const res = await clientsApi.list({
-        name: search || undefined,
+        name: debouncedSearch || undefined,
         page,
         page_size: pageSize,
         active_only: !showInactive,
@@ -222,9 +231,9 @@ export default function ClientsPage() {
             <div className="relative max-w-xs flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Buscar por nome..."
+                placeholder="Buscar por nome ou CPF/CNPJ..."
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
               />
             </div>

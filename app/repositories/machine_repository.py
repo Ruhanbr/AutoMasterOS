@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.machine import Machine
@@ -133,6 +133,29 @@ class MachineRepository(BaseRepository[Machine]):
             filters.append(Machine.deleted_at.is_(None))
             filters.append(Machine.active.is_(True))
         # active_only=False → mostra TODAS, incluindo desativadas (deleted_at preenchido)
+        return await self.list_paginated(*filters, page=page, page_size=page_size)
+
+    async def search(
+        self,
+        tenant_id: uuid.UUID,
+        q: str,
+        active_only: bool = True,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Machine], int]:
+        """Busca por marca, modelo, nº de série ou placa (server-side, ILIKE)."""
+        filters = [
+            Machine.tenant_id == tenant_id,
+            or_(
+                Machine.brand.ilike(f"%{q}%"),
+                Machine.model.ilike(f"%{q}%"),
+                Machine.serial_number.ilike(f"%{q}%"),
+                Machine.placa.ilike(f"%{q}%"),
+            ),
+        ]
+        if active_only:
+            filters.append(Machine.deleted_at.is_(None))
+            filters.append(Machine.active.is_(True))
         return await self.list_paginated(*filters, page=page, page_size=page_size)
 
     async def list_by_client(

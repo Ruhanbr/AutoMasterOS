@@ -268,7 +268,7 @@ export const machinesApi = {
    * ownership isolation (only machines belonging to that client are returned).
    * Without client_id the full tenant list is returned (admin mode).
    */
-  list: (params?: { client_id?: string; active_only?: boolean; page?: number; page_size?: number }) => {
+  list: (params?: { client_id?: string; active_only?: boolean; search?: string; page?: number; page_size?: number }) => {
     const { client_id, ...queryParams } = params ?? {};
     return api.get('/machines', {
       params: queryParams,

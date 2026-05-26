@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -64,9 +64,19 @@ function MachinesPageContent() {
   const clientIdFromUrl = searchParams.get('client_id') ?? undefined;
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showInactive, setShowInactive] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Machine | null>(null);
+
+  // Debounce: só dispara query após 350ms sem digitar
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Volta pra página 1 quando o texto muda
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
 
   // When filtering by client, fetch client name for the banner
   const { data: clientData } = useQuery({
@@ -80,15 +90,16 @@ function MachinesPageContent() {
     staleTime: 60_000,
   });
 
-  // Main machines query — respects client filter from URL and showInactive toggle
+  // Main machines query — server-side search, client filter e showInactive
   const { data, isLoading } = useQuery<PaginatedResponse<Machine>>({
-    queryKey: ['machines', page, clientIdFromUrl, showInactive],
+    queryKey: ['machines', page, clientIdFromUrl, showInactive, debouncedSearch],
     queryFn: async () => {
       const res = await machinesApi.list({
         page,
         page_size: PAGE_SIZE,
         active_only: !showInactive,
         client_id: clientIdFromUrl,
+        search: debouncedSearch || undefined,
       });
       return res.data;
     },
@@ -118,18 +129,8 @@ function MachinesPageContent() {
     },
   });
 
-  // Client-side filter by search (brand, model, serial)
-  const filtered = (data?.items ?? []).filter((m) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      m.brand.toLowerCase().includes(q) ||
-      m.model.toLowerCase().includes(q) ||
-      m.serial_number.toLowerCase().includes(q) ||
-      (m.client?.name ?? '').toLowerCase().includes(q) ||
-      (m.placa ?? '').toLowerCase().includes(q)
-    );
-  });
+  // Dados já filtrados pelo servidor
+  const filtered = data?.items ?? [];
 
   // "Nova Máquina" link preserves the client_id param so the form can pre-fill it
   const newMachineHref = clientIdFromUrl
@@ -164,7 +165,7 @@ function MachinesPageContent() {
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Marca, modelo, série, cliente ou placa..."
+              placeholder="Buscar por marca, modelo, série ou placa..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);

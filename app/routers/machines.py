@@ -58,6 +58,7 @@ async def list_machines(
     current_user: CurrentUser,
     client_id: ClientId,                         # None sem header, UUID com header
     active_only: bool = Query(True),
+    search: str | None = Query(None, description="Busca por marca, modelo, série ou placa"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -66,12 +67,14 @@ async def list_machines(
 
     - SEM header → retorna todas do tenant (uso administrativo)
     - COM header → retorna APENAS as do cliente informado (portal cliente)
+    - search → busca server-side por marca, modelo, série ou placa
     """
     try:
         result = await MachineService(session).list(
             tenant_id,
             client_id=client_id,   # None → tenant-wide; UUID → client-scoped
             active_only=active_only,
+            search=search,
             page=page,
             page_size=page_size,
         )

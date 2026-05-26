@@ -1,6 +1,7 @@
+import re
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.client import Client
@@ -59,10 +60,23 @@ class ClientRepository(BaseRepository[Client]):
         return await self.list_paginated(*filters, page=page, page_size=page_size)
 
     async def search_by_name(
-        self, tenant_id: uuid.UUID, name: str, page: int = 1, page_size: int = 20
+        self,
+        tenant_id: uuid.UUID,
+        name: str,
+        page: int = 1,
+        page_size: int = 20,
+        active_only: bool = True,
     ) -> tuple[list[Client], int]:
-        filters = [
-            Client.tenant_id == tenant_id,
-            Client.name.ilike(f"%{name}%"),
-        ]
+        """Busca por nome OU documento (CPF/CNPJ) com ILIKE."""
+        # Remove formatação do documento para comparação (pontos, traços, barras)
+        clean = re.sub(r'[\.\-\/\s]', '', name)
+        filters = [Client.tenant_id == tenant_id]
+        if active_only:
+            filters.append(Client.active.is_(True))
+        filters.append(
+            or_(
+                Client.name.ilike(f"%{name}%"),
+                Client.document.ilike(f"%{clean}%"),
+            )
+        )
         return await self.list_paginated(*filters, page=page, page_size=page_size)

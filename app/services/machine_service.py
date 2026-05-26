@@ -102,10 +102,15 @@ class MachineService:
         tenant_id: uuid.UUID,
         client_id: uuid.UUID | None = None,
         active_only: bool = True,
+        search: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> PaginatedResponse:
-        if client_id:
+        if search:
+            items, total = await self._repo.search(
+                tenant_id, search, active_only=active_only, page=page, page_size=page_size
+            )
+        elif client_id:
             items, total = await self._repo.list_by_client(
                 client_id, tenant_id, active_only=active_only, page=page, page_size=page_size
             )

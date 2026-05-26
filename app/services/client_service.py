@@ -61,7 +61,7 @@ class ClientService:
     ) -> PaginatedResponse:
         if name:
             items, total = await self._repo.search_by_name(
-                tenant_id, name, page=page, page_size=page_size
+                tenant_id, name, page=page, page_size=page_size, active_only=active_only
             )
         else:
             items, total = await self._repo.list_by_tenant(
