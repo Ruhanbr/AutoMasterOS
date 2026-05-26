@@ -33,8 +33,8 @@ class TenantCreate(AutoMasterBaseModel):
     @field_validator("cep")
     @classmethod
     def normalize_cep(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
+        if not v:  # trata None e string vazia ""
+            return None
         digits = "".join(filter(str.isdigit, v))
         if len(digits) != 8:
             raise ValueError("CEP deve ter 8 dígitos")
@@ -71,8 +71,8 @@ class TenantUpdate(AutoMasterBaseModel):
     @field_validator("cep")
     @classmethod
     def normalize_cep(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
+        if not v:  # trata None e string vazia ""
+            return None
         digits = "".join(filter(str.isdigit, v))
         if len(digits) != 8:
             raise ValueError("CEP deve ter 8 dígitos")
