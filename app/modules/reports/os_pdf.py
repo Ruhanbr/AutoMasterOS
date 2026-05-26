@@ -515,7 +515,7 @@ def generate_os_pdf(order_data: dict) -> bytes:
         items_table_data.append([
             Paragraph(item_type_label, ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_CENTER)),
             Paragraph(str(item.get("description", "")), ParagraphStyle("cell", parent=styles["Normal"], fontSize=8)),
-            Paragraph(f"{qty}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
+            Paragraph(f"{float(qty):.2f}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
             Paragraph(f"R$ {_fmt_currency(unit_price)}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
             Paragraph(f"R$ {_fmt_currency(total_price)}", ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, alignment=TA_RIGHT)),
         ])
