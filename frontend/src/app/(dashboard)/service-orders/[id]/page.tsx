@@ -191,9 +191,21 @@ export default function ServiceOrderDetailPage() {
     setWaLoading(true);
     try {
       const res = await reportsApi.getWhatsappLink(params.id);
-      window.open(res.data.link, '_blank');
-    } catch {
-      toast.error('Erro ao gerar link WhatsApp');
+      const link = res.data.link;
+      // Abre o link — se popup for bloqueado, cria um <a> temporário
+      const opened = window.open(link, '_blank');
+      if (!opened) {
+        const a = document.createElement('a');
+        a.href = link;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || 'Erro ao gerar link WhatsApp');
     } finally {
       setWaLoading(false);
     }
