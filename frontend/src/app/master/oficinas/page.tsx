@@ -45,6 +45,11 @@ function extractError(err: unknown, fallback: string): string {
       })
       .join('\n');
   }
+  // objeto com { code, message } — padrão AutoMaster
+  if (typeof detail === 'object' && detail !== null) {
+    const obj = detail as Record<string, unknown>;
+    if (typeof obj.message === 'string') return obj.message;
+  }
   return fallback;
 }
 

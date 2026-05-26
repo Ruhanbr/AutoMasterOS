@@ -22,7 +22,8 @@ class TenantRepository(BaseRepository[Tenant]):
         return result.scalar_one_or_none()
 
     async def document_exists(self, document: str, exclude_id: uuid.UUID | None = None) -> bool:
-        stmt = select(Tenant.id).where(Tenant.document == document)
+        # Verifica apenas tenants ATIVOS — soft-deleted não bloqueiam reutilização do CNPJ
+        stmt = select(Tenant.id).where(Tenant.document == document, Tenant.active.is_(True))
         if exclude_id:
             stmt = stmt.where(Tenant.id != exclude_id)
         result = await self.session.execute(stmt)
