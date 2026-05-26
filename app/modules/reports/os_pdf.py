@@ -649,7 +649,92 @@ def generate_os_pdf(order_data: dict) -> bytes:
         ]),
     )
     story.append(outer_summary)
-    story.append(Spacer(1, 8 * mm))
+    story.append(Spacer(1, 4 * mm))
+
+    # ── PIX PAYMENT BLOCK (if configured) ────────────────────────────────────
+    pix_key = order_data.get("pix_key")
+    if pix_key and total_amount > 0:
+        try:
+            from app.modules.reports.pix_utils import build_pix_payload, build_pix_qrcode_png
+
+            pix_payload = build_pix_payload(
+                key=pix_key,
+                beneficiary_name=order_data.get("tenant_name", "Oficina") or "Oficina",
+                city=order_data.get("tenant_city", "BRASIL") or "BRASIL",
+                amount=float(total_amount),
+                description=f"OS#{order_data.get('os_number', '')}",
+            )
+            qr_png = build_pix_qrcode_png(pix_payload, box_size=4)
+            qr_img = Image(io.BytesIO(qr_png), width=28 * mm, height=28 * mm)
+
+            pix_header_style = ParagraphStyle(
+                "pixheader",
+                parent=styles["Normal"],
+                fontSize=9,
+                fontName="Helvetica-Bold",
+                textColor=colors.HexColor("#1a6b3a"),
+                alignment=TA_LEFT,
+            )
+            pix_key_style = ParagraphStyle(
+                "pixkey",
+                parent=styles["Normal"],
+                fontSize=8,
+                fontName="Helvetica",
+                textColor=colors.black,
+            )
+            pix_small_style = ParagraphStyle(
+                "pixsmall",
+                parent=styles["Normal"],
+                fontSize=7,
+                fontName="Helvetica",
+                textColor=COLOR_DARK_GRAY,
+            )
+
+            pix_key_type = order_data.get("pix_key_type") or "PIX"
+            pix_info_rows = [
+                [Paragraph("💚  PAGAMENTO VIA PIX", pix_header_style)],
+                [Spacer(1, 2 * mm)],
+                [Paragraph(f"<b>Tipo:</b> {pix_key_type}", pix_key_style)],
+                [Paragraph(f"<b>Chave:</b> {pix_key}", pix_key_style)],
+                [Spacer(1, 1 * mm)],
+                [Paragraph(f"Valor: R$ {_fmt_currency(total_amount)}", pix_key_style)],
+                [Spacer(1, 2 * mm)],
+                [Paragraph("Escaneie o QR Code ou copie a chave para pagar.", pix_small_style)],
+            ]
+
+            pix_info_cell = Table(
+                pix_info_rows,
+                colWidths=[page_width - 38 * mm],
+                style=TableStyle([
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]),
+            )
+
+            pix_block = Table(
+                [[qr_img, pix_info_cell]],
+                colWidths=[34 * mm, page_width - 34 * mm],
+                style=TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f0faf4")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#27ae60")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (0, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (0, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]),
+            )
+
+            story.append(pix_block)
+            story.append(Spacer(1, 6 * mm))
+        except Exception:
+            # Se falhar (qrcode não instalado, etc.) não interrompe o PDF
+            story.append(Spacer(1, 4 * mm))
+    else:
+        story.append(Spacer(1, 4 * mm))
 
     # ── DIAGNOSIS & SOLUTION (if present) ────────────────────────────────────
     if order_data.get("diagnosis") or order_data.get("solution"):

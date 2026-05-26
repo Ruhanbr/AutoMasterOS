@@ -38,6 +38,7 @@ cryptography==44.0.0
 
 # DANFE / PDF
 reportlab==4.2.5
+qrcode[pil]==8.0.0
 
 # Excel Reports
 openpyxl==3.1.5

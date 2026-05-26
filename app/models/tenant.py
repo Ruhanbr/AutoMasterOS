@@ -35,6 +35,10 @@ class Tenant(BaseModel):
     # Logo da oficina (caminho ou URL público)
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Pagamento via PIX
+    pix_key: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    pix_key_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Limite de técnicos que podem ser cadastrados nesta oficina
     limite_tecnicos: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
 

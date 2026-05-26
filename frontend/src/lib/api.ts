@@ -186,6 +186,9 @@ export const tenantsApi = {
   },
   /** Remove o logo da oficina */
   deleteLogo: (id: string) => api.delete(`/tenants/${id}/logo`),
+  /** Salva ou remove a chave PIX da oficina */
+  updatePix: (id: string, data: { pix_key: string | null; pix_key_type: string | null }) =>
+    api.patch(`/tenants/${id}/pix`, data),
 };
 
 // ─── Service Orders ───────────────────────────────────────────────────────────

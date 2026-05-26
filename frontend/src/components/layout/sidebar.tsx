@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Tractor, LayoutDashboard, ClipboardList, Users, FileText, Package, DollarSign, Wrench, HardHat, Menu, X } from 'lucide-react';
+import { Tractor, LayoutDashboard, ClipboardList, Users, FileText, Package, DollarSign, Wrench, HardHat, Menu, X, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -15,6 +15,7 @@ const navItems = [
   { href: '/financial', label: 'Financeiro', icon: DollarSign },
   { href: '/invoices', label: 'NF-e', icon: FileText },
   { href: '/tecnicos', label: 'Técnicos', icon: HardHat },
+  { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
 export function Sidebar() {

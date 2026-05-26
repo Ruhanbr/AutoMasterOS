@@ -174,6 +174,9 @@ async def download_os_pdf(
             "tenant_email": tenant.email if tenant else None,
             "tenant_address": _tenant_address(tenant),
             "tenant_logo_url": tenant.logo_url if tenant else None,
+            "tenant_city": tenant.municipio if tenant else None,
+            "pix_key": tenant.pix_key if tenant else None,
+            "pix_key_type": tenant.pix_key_type if tenant else None,
             "generated_at": datetime.now(timezone.utc),
         }
 

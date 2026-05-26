@@ -17,6 +17,7 @@ from app.schemas.tenant import (
     TenantSetupPayload,
     TenantSetupResponse,
     TenantUpdate,
+    PixKeyUpdate,
 )
 from app.services.password_service import PasswordService
 from app.services.email_service import send_temp_password
@@ -233,6 +234,33 @@ async def upload_tenant_logo(
     await session.commit()
     await session.refresh(tenant)
 
+    return TenantResponse.model_validate(tenant)
+
+
+@router.patch(
+    "/{tenant_id}/pix",
+    response_model=TenantResponse,
+    summary="Salva ou remove a chave PIX da oficina",
+)
+async def update_pix_key(
+    tenant_id: uuid.UUID,
+    payload: PixKeyUpdate,
+    session: DbSession,
+) -> TenantResponse:
+    """
+    Atualiza a chave PIX da oficina. Acessível pelo ADMIN do tenant.
+    Envie pix_key=null para remover.
+    """
+    try:
+        tenant = await TenantService(session).get(tenant_id)
+    except AutoMasterException as exc:
+        raise to_http_exception(exc)
+
+    tenant.pix_key = payload.pix_key
+    tenant.pix_key_type = payload.pix_key_type
+    await session.flush()
+    await session.commit()
+    await session.refresh(tenant)
     return TenantResponse.model_validate(tenant)
 
 

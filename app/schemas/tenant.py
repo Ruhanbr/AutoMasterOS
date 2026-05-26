@@ -132,3 +132,11 @@ class TenantResponse(UUIDSchema, TimestampSchema):
     active: bool
     limite_tecnicos: int
     logo_url: str | None = None
+    pix_key: str | None = None
+    pix_key_type: str | None = None
+
+
+class PixKeyUpdate(AutoMasterBaseModel):
+    """Payload para salvar/atualizar a chave PIX da oficina."""
+    pix_key: str | None = None
+    pix_key_type: str | None = None  # CPF, CNPJ, EMAIL, TELEFONE, EVP
