@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   XCircle,
   Ban,
+  Navigation,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -474,6 +475,11 @@ export default function ServiceOrderDetailPage() {
                               <div className="flex items-center gap-1 text-blue-700">
                                 <Wrench className="w-3.5 h-3.5" />
                                 <span className="text-xs font-medium">Serviço</span>
+                              </div>
+                            ) : item.item_type === 'DESLOCAMENTO' ? (
+                              <div className="flex items-center gap-1 text-purple-700">
+                                <Navigation className="w-3.5 h-3.5" />
+                                <span className="text-xs font-medium">Deslocamento</span>
                               </div>
                             ) : (
                               <div className="flex items-center gap-1 text-orange-700">
