@@ -116,6 +116,7 @@ export default function ServiceOrdersPage() {
               </Button>
             </Link>
           </div>
+        </div>
 
         {/* Table */}
         <Card>
