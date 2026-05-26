@@ -206,6 +206,9 @@ export const serviceOrdersApi = {
     api.post(`/service-orders/${id}/finalize-complete`, undefined, {
       params: { notes: notes || undefined },
     }),
+  // Relatório / totais agregados
+  summary: (params?: { date_from?: string; date_to?: string; status?: string }) =>
+    api.get('/service-orders/summary', { params }),
   // Portal do cliente / aprovação de orçamento
   sendBudget: (id: string) =>
     api.post(`/service-orders/${id}/send-budget`, {}),

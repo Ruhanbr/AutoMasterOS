@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from app.models.service_order import ServiceOrder
@@ -50,6 +51,8 @@ async def list_service_orders(
     status: ServiceOrderStatus | None = Query(None),
     client_id: uuid.UUID | None = Query(None),
     machine_id: uuid.UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -61,6 +64,8 @@ async def list_service_orders(
             client_id=client_id,
             machine_id=machine_id,
             technician_user_id=os_filter.get("technician_user_id"),
+            date_from=date_from,
+            date_to=date_to,
             page=page,
             page_size=page_size,
         )
@@ -73,6 +78,24 @@ async def list_service_orders(
         )
     except AutoMasterException as exc:
         raise to_http_exception(exc)
+
+
+@router.get("/summary", response_model=dict)
+async def get_service_orders_summary(
+    tenant_id: TenantId,
+    session: DbSession,
+    current_user: CurrentUser,
+    status: ServiceOrderStatus | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+):
+    """Retorna totais agregados para o relatório de OS por período."""
+    return await ServiceOrderService(session).summary(
+        tenant_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/{order_id}", response_model=ServiceOrderResponse)

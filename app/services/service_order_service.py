@@ -128,6 +128,8 @@ class ServiceOrderService:
         client_id: uuid.UUID | None = None,
         machine_id: uuid.UUID | None = None,
         technician_user_id: uuid.UUID | None = None,
+        date_from=None,
+        date_to=None,
         page: int = 1,
         page_size: int = 20,
     ) -> PaginatedResponse:
@@ -137,10 +139,26 @@ class ServiceOrderService:
             client_id=client_id,
             machine_id=machine_id,
             technician_user_id=technician_user_id,
+            date_from=date_from,
+            date_to=date_to,
             page=page,
             page_size=page_size,
         )
         return PaginatedResponse.build(items, total, page, page_size)
+
+    async def summary(
+        self,
+        tenant_id: uuid.UUID,
+        status: ServiceOrderStatus | None = None,
+        date_from=None,
+        date_to=None,
+    ) -> dict:
+        return await self._repo.sum_by_tenant(
+            tenant_id,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
     # ─── Atualização ──────────────────────────────────────────────────────────
 

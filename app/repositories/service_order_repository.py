@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +62,8 @@ class ServiceOrderRepository(BaseRepository[ServiceOrder]):
         client_id: uuid.UUID | None = None,
         machine_id: uuid.UUID | None = None,
         technician_user_id: uuid.UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[ServiceOrder], int]:
@@ -72,14 +75,53 @@ class ServiceOrderRepository(BaseRepository[ServiceOrder]):
         if machine_id:
             filters.append(ServiceOrder.machine_id == machine_id)
         if technician_user_id:
-            # Isolamento TECNICO: vê apenas suas próprias OS
             filters.append(ServiceOrder.technician_user_id == technician_user_id)
+        if date_from:
+            filters.append(ServiceOrder.opened_at >= date_from)
+        if date_to:
+            from datetime import datetime, time
+            end_of_day = datetime.combine(date_to, time.max)
+            filters.append(ServiceOrder.opened_at <= end_of_day)
         return await self.list_paginated(
             *filters,
             page=page,
             page_size=page_size,
             order_by=ServiceOrder.number.desc(),
         )
+
+    async def sum_by_tenant(
+        self,
+        tenant_id: uuid.UUID,
+        status: ServiceOrderStatus | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> dict:
+        """Retorna totais agregados para o relatório."""
+        filters = [ServiceOrder.tenant_id == tenant_id]
+        if status:
+            filters.append(ServiceOrder.status == status)
+        if date_from:
+            filters.append(ServiceOrder.opened_at >= date_from)
+        if date_to:
+            from datetime import datetime, time
+            end_of_day = datetime.combine(date_to, time.max)
+            filters.append(ServiceOrder.opened_at <= end_of_day)
+
+        stmt = select(
+            func.count(ServiceOrder.id).label("total_os"),
+            func.coalesce(func.sum(ServiceOrder.total_amount), 0).label("total_faturamento"),
+            func.coalesce(func.sum(ServiceOrder.total_services), 0).label("total_servicos"),
+            func.coalesce(func.sum(ServiceOrder.total_parts), 0).label("total_pecas"),
+        ).where(*filters)
+
+        result = await self.session.execute(stmt)
+        row = result.one()
+        return {
+            "total_os": row.total_os,
+            "total_faturamento": float(row.total_faturamento),
+            "total_servicos": float(row.total_servicos),
+            "total_pecas": float(row.total_pecas),
+        }
 
     async def get_item_by_id(
         self, item_id: uuid.UUID, service_order_id: uuid.UUID

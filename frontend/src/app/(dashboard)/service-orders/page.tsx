@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Plus, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, AlertCircle, ChevronLeft, ChevronRight, FileBarChart } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
@@ -102,13 +102,20 @@ export default function ServiceOrdersPage() {
             <option value="FINALIZADA">Finalizadas</option>
           </Select>
 
-          <Link href="/service-orders/new">
-            <Button>
-              <Plus className="w-4 h-4" />
-              Nova OS
-            </Button>
-          </Link>
-        </div>
+          <div className="flex items-center gap-2">
+            <Link href="/service-orders/report">
+              <Button variant="outline">
+                <FileBarChart className="w-4 h-4" />
+                Relatório
+              </Button>
+            </Link>
+            <Link href="/service-orders/new">
+              <Button>
+                <Plus className="w-4 h-4" />
+                Nova OS
+              </Button>
+            </Link>
+          </div>
 
         {/* Table */}
         <Card>
