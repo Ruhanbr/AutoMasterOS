@@ -18,8 +18,6 @@ import { PageSpinner } from '@/components/ui/spinner';
 import { clientsApi, deereApi, machinesApi } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-
 function getTenantIdFromToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -124,8 +122,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     onError: () => toast.error('Erro ao sincronizar'),
   });
 
-  const handleConnect = () => {
-    window.location.href = `${API_URL}/integrations/deere/connect?client_id=${clientId}`;
+  const handleConnect = async () => {
+    try {
+      // Chamada autenticada via axios para obter a URL OAuth
+      const res = await deereApi.getConnectUrl(clientId);
+      const { url } = res.data as { url: string };
+      // Redireciona o browser para a página de autorização da John Deere
+      window.location.href = url;
+    } catch {
+      toast.error('Erro ao gerar link de autorização John Deere');
+    }
   };
 
   if (isLoading) return <div><Header title="Cliente" /><PageSpinner /></div>;

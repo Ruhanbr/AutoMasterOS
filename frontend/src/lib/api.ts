@@ -327,6 +327,8 @@ export const reportsApi = {
 
 // ─── John Deere (por cliente) ─────────────────────────────────────────────────
 export const deereApi = {
+  getConnectUrl: (clientId: string) =>
+    api.get(`/integrations/deere/connect-url?client_id=${clientId}`),
   clientStatus: (clientId: string) =>
     api.get(`/integrations/deere/clients/${clientId}/status`),
   clientDisconnect: (clientId: string) =>

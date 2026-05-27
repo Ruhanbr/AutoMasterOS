@@ -67,6 +67,21 @@ async def _valid_token(conn: DeereConnection, session) -> str:
 
 # ── OAuth ─────────────────────────────────────────────────────────────────────
 
+@router.get("/connect-url", summary="Retorna a URL OAuth JD para o frontend redirecionar")
+async def get_connect_url(
+    tenant_id: TenantId,
+    current_user: CurrentUser,
+    client_id: uuid.UUID = Query(..., description="ID do cliente (fazendeiro)"),
+):
+    """
+    Retorna a URL de autorização OAuth da John Deere.
+    O frontend faz a chamada autenticada e depois redireciona o browser.
+    """
+    state = deere.generate_state(str(tenant_id), str(client_id))
+    url = deere.build_authorization_url(state)
+    return {"url": url}
+
+
 @router.get("/connect", summary="Inicia OAuth JD para um cliente específico")
 async def connect(
     tenant_id: TenantId,
