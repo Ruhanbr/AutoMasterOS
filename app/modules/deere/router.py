@@ -1,14 +1,14 @@
 """
-Router da integração John Deere.
+Router da integração John Deere — por cliente (fazendeiro).
 
 Endpoints:
-  GET  /integrations/deere/connect      → redireciona para OAuth JD
-  GET  /integrations/deere/callback     → recebe o code OAuth e salva tokens
-  GET  /integrations/deere/status       → verifica se o tenant está conectado
-  DELETE /integrations/deere/disconnect → desconecta o tenant
-  POST /integrations/deere/sync         → sincroniza alertas manualmente
-  GET  /integrations/deere/machines     → lista máquinas JD do tenant
-  GET  /integrations/deere/alerts       → lista alertas/DTCs ativos
+  GET  /integrations/deere/connect?client_id=xxx  → inicia OAuth para o cliente
+  GET  /integrations/deere/callback               → recebe code e salva tokens
+  GET  /integrations/deere/clients/{id}/status    → status da conexão do cliente
+  DELETE /integrations/deere/clients/{id}/disconnect
+  GET  /integrations/deere/clients/{id}/machines  → máquinas JD do cliente
+  GET  /integrations/deere/clients/{id}/alerts    → DTCs/alertas do cliente
+  POST /integrations/deere/clients/{id}/sync      → sincroniza e cria OS
 """
 from __future__ import annotations
 
@@ -34,27 +34,19 @@ router = APIRouter(prefix="/integrations/deere", tags=["John Deere"])
 
 class DeereStatusResponse(BaseModel):
     connected: bool
+    client_id: str | None = None
     organization_id: str | None = None
     organization_name: str | None = None
     token_expires_at: datetime | None = None
 
 
-class AlertSummary(BaseModel):
-    alert_id: str
-    machine_id: str
-    machine_name: str
-    dtc_code: str
-    severity: str
-    description: str
-    triggered_at: str
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _get_connection(session, tenant_id: uuid.UUID) -> DeereConnection | None:
+async def _get_conn(session, tenant_id: uuid.UUID, client_id: uuid.UUID) -> DeereConnection | None:
     result = await session.execute(
         select(DeereConnection).where(
             DeereConnection.tenant_id == tenant_id,
+            DeereConnection.client_id == client_id,
             DeereConnection.active.is_(True),
         )
     )
@@ -64,7 +56,6 @@ async def _get_connection(session, tenant_id: uuid.UUID) -> DeereConnection | No
 async def _valid_token(conn: DeereConnection, session) -> str:
     """Retorna access_token válido, renovando se necessário."""
     if conn.token_expires_at <= datetime.now(timezone.utc):
-        logger.info("deere_token_expired_refreshing", tenant_id=str(conn.tenant_id))
         tokens = await deere.refresh_access_token(conn.refresh_token)
         conn.access_token = tokens["access_token"]
         conn.refresh_token = tokens.get("refresh_token", conn.refresh_token)
@@ -74,15 +65,16 @@ async def _valid_token(conn: DeereConnection, session) -> str:
     return conn.access_token
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# ── OAuth ─────────────────────────────────────────────────────────────────────
 
-@router.get("/connect", summary="Inicia fluxo OAuth com John Deere")
+@router.get("/connect", summary="Inicia OAuth JD para um cliente específico")
 async def connect(
     tenant_id: TenantId,
     current_user: CurrentUser,
+    client_id: uuid.UUID = Query(..., description="ID do cliente (fazendeiro)"),
 ):
-    """Redireciona o usuário para a página de autorização da John Deere."""
-    state = deere.generate_state(str(tenant_id))
+    """Gera URL OAuth e redireciona para a John Deere."""
+    state = deere.generate_state(str(tenant_id), str(client_id))
     url = deere.build_authorization_url(state)
     return RedirectResponse(url=url)
 
@@ -94,20 +86,16 @@ async def callback(
     state: str = Query(...),
     error: str | None = Query(default=None),
 ):
-    """
-    John Deere redireciona aqui após o usuário autorizar.
-    Troca o code por tokens e salva no banco.
-    """
     if error:
         raise HTTPException(status_code=400, detail=f"Autorização negada: {error}")
 
     try:
-        tenant_id_str, _ = deere.parse_state(state)
+        tenant_id_str, client_id_str = deere.parse_state(state)
         tenant_id = uuid.UUID(tenant_id_str)
+        client_id = uuid.UUID(client_id_str)
     except Exception:
         raise HTTPException(status_code=400, detail="State inválido")
 
-    # Troca code por tokens
     try:
         tokens = await deere.exchange_code(code)
     except Exception as e:
@@ -118,7 +106,6 @@ async def callback(
     refresh_token = tokens.get("refresh_token", "")
     expires_at = deere.token_expires_at(tokens.get("expires_in", 3600))
 
-    # Busca a primeira organização do usuário
     try:
         orgs = await deere.get_organizations(access_token)
         org = orgs[0] if orgs else {}
@@ -129,8 +116,7 @@ async def callback(
         org_id = "unknown"
         org_name = ""
 
-    # Salva ou atualiza conexão
-    existing = await _get_connection(session, tenant_id)
+    existing = await _get_conn(session, tenant_id, client_id)
     if existing:
         existing.access_token = access_token
         existing.refresh_token = refresh_token
@@ -142,6 +128,7 @@ async def callback(
         conn = DeereConnection(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
+            client_id=client_id,
             organization_id=org_id,
             organization_name=org_name,
             access_token=access_token,
@@ -151,118 +138,109 @@ async def callback(
         session.add(conn)
 
     await session.commit()
-    logger.info("deere_connected", tenant_id=str(tenant_id), org_id=org_id)
+    logger.info("deere_client_connected", tenant_id=str(tenant_id), client_id=str(client_id))
 
-    # Redireciona para o frontend com sucesso
-    return RedirectResponse(url="/configuracoes?deere=connected")
+    # Redireciona para a ficha do cliente com flag de sucesso
+    return RedirectResponse(url=f"/clients?deere_client={client_id}&deere=connected")
 
 
-@router.get("/status", response_model=DeereStatusResponse)
-async def get_status(tenant_id: TenantId, session: DbSession, current_user: CurrentUser):
-    """Verifica se o tenant tem conexão ativa com a John Deere."""
-    conn = await _get_connection(session, tenant_id)
+# ── Endpoints por cliente ─────────────────────────────────────────────────────
+
+@router.get("/clients/{client_id}/status", response_model=DeereStatusResponse)
+async def client_status(
+    client_id: uuid.UUID,
+    tenant_id: TenantId,
+    session: DbSession,
+    current_user: CurrentUser,
+):
+    conn = await _get_conn(session, tenant_id, client_id)
     if not conn:
-        return DeereStatusResponse(connected=False)
+        return DeereStatusResponse(connected=False, client_id=str(client_id))
     return DeereStatusResponse(
         connected=True,
+        client_id=str(client_id),
         organization_id=conn.organization_id,
         organization_name=conn.organization_name,
         token_expires_at=conn.token_expires_at,
     )
 
 
-@router.delete("/disconnect", status_code=status.HTTP_204_NO_CONTENT)
-async def disconnect(tenant_id: TenantId, session: DbSession, current_user: CurrentUser):
-    """Desconecta o tenant da John Deere."""
-    conn = await _get_connection(session, tenant_id)
-    if conn:
-        conn.active = False
-        await session.commit()
-    logger.info("deere_disconnected", tenant_id=str(tenant_id))
-
-
-@router.get("/machines", summary="Lista máquinas JD do tenant")
-async def list_machines(
+@router.delete("/clients/{client_id}/disconnect", status_code=status.HTTP_204_NO_CONTENT)
+async def client_disconnect(
+    client_id: uuid.UUID,
     tenant_id: TenantId,
     session: DbSession,
     current_user: CurrentUser,
 ):
-    """Busca as máquinas da organização JD conectada."""
-    conn = await _get_connection(session, tenant_id)
-    if not conn:
-        raise HTTPException(status_code=404, detail="Conta John Deere não conectada")
+    conn = await _get_conn(session, tenant_id, client_id)
+    if conn:
+        conn.active = False
+        await session.commit()
+    logger.info("deere_client_disconnected", client_id=str(client_id))
 
+
+@router.get("/clients/{client_id}/machines")
+async def client_machines(
+    client_id: uuid.UUID,
+    tenant_id: TenantId,
+    session: DbSession,
+    current_user: CurrentUser,
+):
+    conn = await _get_conn(session, tenant_id, client_id)
+    if not conn:
+        raise HTTPException(status_code=404, detail="Cliente não conectou a conta John Deere")
     token = await _valid_token(conn, session)
     try:
         machines = await deere.get_machines(token, conn.organization_id)
     except Exception as e:
-        logger.error("deere_machines_fetch_failed", error=str(e))
-        raise HTTPException(status_code=502, detail="Erro ao buscar máquinas da John Deere")
-
+        logger.error("deere_machines_failed", error=str(e))
+        raise HTTPException(status_code=502, detail="Erro ao buscar máquinas")
     return {"machines": machines, "total": len(machines)}
 
 
-@router.get("/alerts", summary="Lista alertas/DTCs ativos")
-async def list_alerts(
+@router.get("/clients/{client_id}/alerts")
+async def client_alerts(
+    client_id: uuid.UUID,
     tenant_id: TenantId,
     session: DbSession,
     current_user: CurrentUser,
 ):
-    """Busca alertas e DTCs ativos das máquinas JD."""
-    conn = await _get_connection(session, tenant_id)
+    conn = await _get_conn(session, tenant_id, client_id)
     if not conn:
-        raise HTTPException(status_code=404, detail="Conta John Deere não conectada")
-
+        raise HTTPException(status_code=404, detail="Cliente não conectou a conta John Deere")
     token = await _valid_token(conn, session)
     try:
         alerts = await deere.get_alerts(token, conn.organization_id)
     except Exception as e:
-        logger.error("deere_alerts_fetch_failed", error=str(e))
-        raise HTTPException(status_code=502, detail="Erro ao buscar alertas da John Deere")
-
+        logger.error("deere_alerts_failed", error=str(e))
+        raise HTTPException(status_code=502, detail="Erro ao buscar alertas")
     return {"alerts": alerts, "total": len(alerts)}
 
 
-@router.post("/sync", summary="Sincroniza alertas e cria OS automaticamente")
-async def sync_alerts(
+@router.post("/clients/{client_id}/sync")
+async def client_sync(
+    client_id: uuid.UUID,
     tenant_id: TenantId,
     session: DbSession,
     current_user: CurrentUser,
 ):
-    """
-    Busca alertas JD e cria OS automaticamente para cada DTC encontrado.
-    """
-    conn = await _get_connection(session, tenant_id)
+    """Sincroniza alertas JD do cliente e futuramente cria OS automática."""
+    conn = await _get_conn(session, tenant_id, client_id)
     if not conn:
-        raise HTTPException(status_code=404, detail="Conta John Deere não conectada")
-
+        raise HTTPException(status_code=404, detail="Cliente não conectou a conta John Deere")
     token = await _valid_token(conn, session)
-
     try:
         alerts = await deere.get_alerts(token, conn.organization_id)
     except Exception as e:
         logger.error("deere_sync_failed", error=str(e))
-        raise HTTPException(status_code=502, detail="Erro ao sincronizar com John Deere")
+        raise HTTPException(status_code=502, detail="Erro ao sincronizar")
 
-    created_os = 0
     for alert in alerts:
         dtc = alert.get("dtcCode") or alert.get("alertType", "UNKNOWN")
-        machine_id = alert.get("machineId") or ""
-        description = alert.get("description") or f"Alerta John Deere: {dtc}"
-        severity = alert.get("severity", "").upper()
-
-        logger.info(
-            "deere_alert_received",
-            tenant_id=str(tenant_id),
-            dtc=dtc,
-            machine_id=machine_id,
-            severity=severity,
-        )
-        # TODO: criar OS automaticamente vinculada à máquina
-        created_os += 1
+        logger.info("deere_alert", client_id=str(client_id), dtc=dtc)
+        # TODO: criar OS automática vinculada ao cliente e máquina
 
     return {
         "alerts_found": len(alerts),
-        "os_created": created_os,
-        "message": f"{len(alerts)} alertas encontrados. Criação automática de OS em breve.",
+        "message": f"{len(alerts)} alerta(s) encontrado(s).",
     }

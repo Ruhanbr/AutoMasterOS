@@ -1,6 +1,6 @@
 """
-Modelo de banco de dados para conexões John Deere por tenant.
-Armazena tokens OAuth e metadados da organização JD conectada.
+Modelo de banco de dados para conexões John Deere por cliente.
+Cada fazendeiro (cliente) autoriza o acesso às suas próprias máquinas.
 """
 from __future__ import annotations
 
@@ -15,10 +15,11 @@ from app.models.base import BaseModel
 
 
 class DeereConnection(BaseModel):
-    """Conexão OAuth entre um tenant AutoMaster e uma org John Deere."""
+    """Conexão OAuth entre um cliente AutoMaster e sua conta John Deere."""
 
     __tablename__ = "deere_connections"
 
+    # Isolamento multi-tenant
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -26,17 +27,24 @@ class DeereConnection(BaseModel):
         index=True,
     )
 
-    # Organização John Deere vinculada
+    # Cliente (fazendeiro) que autorizou o acesso
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Organização John Deere do cliente
     organization_id: Mapped[str] = mapped_column(String(100), nullable=False)
     organization_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
 
-    # Tokens OAuth (armazenados em texto — produção deve usar criptografia)
+    # Tokens OAuth
     access_token: Mapped[str] = mapped_column(Text, nullable=False)
     refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     token_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    # Controle
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     def __repr__(self) -> str:
-        return f"<DeereConnection tenant={self.tenant_id} org={self.organization_id}>"
+        return f"<DeereConnection client={self.client_id} org={self.organization_id}>"

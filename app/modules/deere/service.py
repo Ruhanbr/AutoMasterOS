@@ -1,12 +1,9 @@
 """
 Serviço de integração com a John Deere Operations Center API.
-Gerencia OAuth 2.0, busca de máquinas, alertas e DTCs.
+Gerencia OAuth 2.0, busca de máquinas, alertas e DTCs por cliente.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -19,15 +16,12 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# ── Constantes ────────────────────────────────────────────────────────────────
-
 SCOPES = "ag1 ag2 eq1 eq2 offline_access openid profile"
 
 
-# ── Helpers OAuth ─────────────────────────────────────────────────────────────
+# ── OAuth helpers ─────────────────────────────────────────────────────────────
 
 def build_authorization_url(state: str) -> str:
-    """Gera a URL de autorização OAuth para redirecionar o usuário à JD."""
     params = {
         "response_type": "code",
         "client_id": settings.DEERE_CLIENT_ID,
@@ -38,24 +32,27 @@ def build_authorization_url(state: str) -> str:
     return f"{settings.deere_auth_base}/authorize?{urlencode(params)}"
 
 
-def generate_state(tenant_id: str) -> str:
-    """Gera token CSRF seguro embedando o tenant_id."""
+def generate_state(tenant_id: str, client_id: str) -> str:
+    """State embute tenant_id e client_id separados por ':' + nonce CSRF."""
     nonce = secrets.token_hex(16)
-    return f"{tenant_id}:{nonce}"
+    return f"{tenant_id}:{client_id}:{nonce}"
 
 
 def parse_state(state: str) -> tuple[str, str]:
-    """Extrai tenant_id e nonce do state."""
-    parts = state.split(":", 1)
-    if len(parts) != 2:
+    """Extrai (tenant_id, client_id) do state."""
+    parts = state.split(":")
+    if len(parts) < 3:
         raise ValueError("State inválido")
     return parts[0], parts[1]
+
+
+def token_expires_at(expires_in: int) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(seconds=expires_in - 60)
 
 
 # ── Troca de tokens ───────────────────────────────────────────────────────────
 
 async def exchange_code(code: str) -> dict[str, Any]:
-    """Troca o authorization code por access_token + refresh_token."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{settings.deere_auth_base}/token",
@@ -73,7 +70,6 @@ async def exchange_code(code: str) -> dict[str, Any]:
 
 
 async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
-    """Renova o access_token usando o refresh_token."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{settings.deere_auth_base}/token",
@@ -89,11 +85,6 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
         return resp.json()
 
 
-def token_expires_at(expires_in: int) -> datetime:
-    """Calcula datetime de expiração com 60s de margem."""
-    return datetime.now(timezone.utc) + timedelta(seconds=expires_in - 60)
-
-
 # ── Chamadas à API ────────────────────────────────────────────────────────────
 
 def _headers(access_token: str) -> dict[str, str]:
@@ -104,7 +95,6 @@ def _headers(access_token: str) -> dict[str, str]:
 
 
 async def get_organizations(access_token: str) -> list[dict]:
-    """Lista as organizações John Deere do usuário autenticado."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{settings.deere_api_base}/organizations",
@@ -112,12 +102,10 @@ async def get_organizations(access_token: str) -> list[dict]:
             timeout=30,
         )
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("values", [])
+        return resp.json().get("values", [])
 
 
 async def get_machines(access_token: str, org_id: str) -> list[dict]:
-    """Lista as máquinas de uma organização JD."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{settings.deere_api_base}/organizations/{org_id}/machines",
@@ -125,15 +113,10 @@ async def get_machines(access_token: str, org_id: str) -> list[dict]:
             timeout=30,
         )
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("values", [])
+        return resp.json().get("values", [])
 
 
 async def get_alerts(access_token: str, org_id: str) -> list[dict]:
-    """
-    Busca alertas/DTCs ativos de todas as máquinas da organização.
-    Retorna lista de alertas com: machineId, dtcCode, severity, description, triggeredAt.
-    """
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{settings.deere_api_base}/organizations/{org_id}/alerts",
@@ -144,12 +127,10 @@ async def get_alerts(access_token: str, org_id: str) -> list[dict]:
         if resp.status_code == 404:
             return []
         resp.raise_for_status()
-        data = resp.json()
-        return data.get("values", [])
+        return resp.json().get("values", [])
 
 
 async def get_machine_hours(access_token: str, machine_id: str) -> dict:
-    """Retorna horas de motor de uma máquina específica."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{settings.deere_api_base}/machines/{machine_id}/engineHours",

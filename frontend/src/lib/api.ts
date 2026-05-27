@@ -325,11 +325,16 @@ export const reportsApi = {
     api.get(`/service-orders/${id}/report/whatsapp`),
 };
 
-// ─── John Deere ───────────────────────────────────────────────────────────────
+// ─── John Deere (por cliente) ─────────────────────────────────────────────────
 export const deereApi = {
-  status: () => api.get('/integrations/deere/status'),
-  disconnect: () => api.delete('/integrations/deere/disconnect'),
-  machines: () => api.get('/integrations/deere/machines'),
-  alerts: () => api.get('/integrations/deere/alerts'),
-  sync: () => api.post('/integrations/deere/sync'),
+  clientStatus: (clientId: string) =>
+    api.get(`/integrations/deere/clients/${clientId}/status`),
+  clientDisconnect: (clientId: string) =>
+    api.delete(`/integrations/deere/clients/${clientId}/disconnect`),
+  clientMachines: (clientId: string) =>
+    api.get(`/integrations/deere/clients/${clientId}/machines`),
+  clientAlerts: (clientId: string) =>
+    api.get(`/integrations/deere/clients/${clientId}/alerts`),
+  clientSync: (clientId: string) =>
+    api.post(`/integrations/deere/clients/${clientId}/sync`),
 };

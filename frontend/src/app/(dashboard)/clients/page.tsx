@@ -310,6 +310,12 @@ export default function ClientsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        {/* Ver detalhes / JD */}
+                        <Link href={`/clients/${client.id}`}>
+                          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-green-700 hover:bg-green-50" title="Ver detalhes e John Deere">
+                            Detalhes
+                          </Button>
+                        </Link>
                         {/* Ver máquinas */}
                         <Link href={`/machines?client_id=${client.id}`}>
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Ver máquinas">
