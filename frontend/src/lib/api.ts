@@ -324,3 +324,12 @@ export const reportsApi = {
   getWhatsappLink: (id: string) =>
     api.get(`/service-orders/${id}/report/whatsapp`),
 };
+
+// ─── John Deere ───────────────────────────────────────────────────────────────
+export const deereApi = {
+  status: () => api.get('/integrations/deere/status'),
+  disconnect: () => api.delete('/integrations/deere/disconnect'),
+  machines: () => api.get('/integrations/deere/machines'),
+  alerts: () => api.get('/integrations/deere/alerts'),
+  sync: () => api.post('/integrations/deere/sync'),
+};
