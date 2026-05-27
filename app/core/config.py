@@ -71,6 +71,22 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True
 
+    # ─── John Deere API ──────────────────────────────────────────────────────
+    DEERE_CLIENT_ID: str = ""
+    DEERE_CLIENT_SECRET: str = ""
+    DEERE_REDIRECT_URI: str = "http://localhost:9090/callback"
+    DEERE_ENV: str = "sandbox"  # "sandbox" ou "production"
+
+    @property
+    def deere_api_base(self) -> str:
+        if self.DEERE_ENV == "production":
+            return "https://api.deere.com/platform"
+        return "https://sandboxapi.deere.com/platform"
+
+    @property
+    def deere_auth_base(self) -> str:
+        return "https://signin.johndeere.com/oauth2/aus78tnlaysMraFhC1t7/v1"
+
     # ─── Email ────────────────────────────────────────────────────────────────
     EMAIL_HOST: str = "smtp.gmail.com"
     EMAIL_PORT: int = 587

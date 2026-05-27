@@ -116,12 +116,14 @@ def create_application() -> FastAPI:
     from app.modules.stock.router import router as stock_router
     from app.routers.public import router as public_router
     from app.routers.dashboard import router as dashboard_router
+    from app.modules.deere.router import router as deere_router
 
     app.include_router(stock_router, prefix=prefix)
     app.include_router(financial_router, prefix=prefix)
     app.include_router(orchestration_router, prefix=prefix)
     app.include_router(reports_router, prefix=prefix)
     app.include_router(dashboard_router, prefix=prefix)
+    app.include_router(deere_router, prefix=prefix)
     # Router público — sem autenticação (portal do cliente)
     app.include_router(public_router, prefix=prefix)
 
