@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { authApi } from '@/lib/api';
 import { clearTokens } from '@/lib/auth';
 import type { User as UserType } from '@/types';
+import { NotificationBell } from './notification-bell';
 
 interface HeaderProps {
   title: string;
@@ -34,6 +35,10 @@ export function Header({ title }: HeaderProps) {
   return (
     <header className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between flex-shrink-0">
       <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2">
+        <NotificationBell />
 
       {/* User menu */}
       <div className="relative">
@@ -71,6 +76,7 @@ export function Header({ title }: HeaderProps) {
             </div>
           </>
         )}
+      </div>
       </div>
     </header>
   );

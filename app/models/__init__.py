@@ -15,6 +15,7 @@ from app.models.service_order import (
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.user import User, UserRole
 from app.models.password_reset_token import PasswordResetToken
+from app.models.notification import Notification, NotificationType
 
 __all__ = [
     "Base",
@@ -35,4 +36,6 @@ __all__ = [
     "User",
     "UserRole",
     "PasswordResetToken",
+    "Notification",
+    "NotificationType",
 ]

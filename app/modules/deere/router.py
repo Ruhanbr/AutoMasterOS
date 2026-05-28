@@ -239,7 +239,7 @@ async def client_sync(
     session: DbSession,
     current_user: CurrentUser,
 ):
-    """Sincroniza alertas JD do cliente e futuramente cria OS automática."""
+    """Sincroniza alertas JD do cliente, cria OS automáticas e notifica gestores."""
     conn = await _get_conn(session, tenant_id, client_id)
     if not conn:
         raise HTTPException(status_code=404, detail="Cliente não conectou a conta John Deere")
@@ -250,12 +250,95 @@ async def client_sync(
         logger.error("deere_sync_failed", error=str(e))
         raise HTTPException(status_code=502, detail="Erro ao sincronizar")
 
-    for alert in alerts:
-        dtc = alert.get("dtcCode") or alert.get("alertType", "UNKNOWN")
-        logger.info("deere_alert", client_id=str(client_id), dtc=dtc)
-        # TODO: criar OS automática vinculada ao cliente e máquina
+    os_criadas = await _create_os_from_alerts(session, tenant_id, client_id, alerts)
 
     return {
         "alerts_found": len(alerts),
-        "message": f"{len(alerts)} alerta(s) encontrado(s).",
+        "os_created": os_criadas,
+        "message": f"{len(alerts)} alerta(s) encontrado(s), {os_criadas} OS criada(s).",
     }
+
+
+async def _create_os_from_alerts(
+    session,
+    tenant_id: uuid.UUID,
+    client_id: uuid.UUID,
+    alerts: list[dict],
+) -> int:
+    """
+    Para cada alerta JD:
+      1. Cria uma OS com status ABERTA, descrevendo o DTC
+      2. Notifica todos os ADMINs do tenant
+    Retorna a quantidade de OS criadas.
+    """
+    if not alerts:
+        return 0
+
+    from datetime import datetime, timezone
+    from sqlalchemy import select, func as sqlfunc
+    from app.models.service_order import ServiceOrder, ServiceOrderStatus, BudgetStatus
+    from app.models.client import Client
+    from app.repositories.notification_repository import NotificationRepository
+    from app.models.notification import NotificationType
+
+    # Busca o nome do cliente
+    client_result = await session.execute(
+        select(Client.name).where(Client.id == client_id)
+    )
+    client_name = client_result.scalar_one_or_none() or "Cliente"
+
+    # Próximo número de OS para o tenant
+    num_result = await session.execute(
+        select(sqlfunc.coalesce(sqlfunc.max(ServiceOrder.number), 0)).where(
+            ServiceOrder.tenant_id == tenant_id
+        )
+    )
+    next_number = (num_result.scalar_one() or 0) + 1
+
+    notif_repo = NotificationRepository(session)
+    admin_ids = await notif_repo.get_admins_for_tenant(tenant_id)
+
+    os_criadas = 0
+    for alert in alerts:
+        dtc = alert.get("dtcCode") or alert.get("alertType") or "ALERTA"
+        description_raw = alert.get("description") or alert.get("alertType") or dtc
+        severity = alert.get("severity", "")
+
+        description = (
+            f"[John Deere — Automático]\n"
+            f"Código: {dtc}\n"
+            f"Descrição: {description_raw}\n"
+            f"Severidade: {severity or 'N/A'}\n"
+        )
+
+        os = ServiceOrder(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            client_id=client_id,
+            number=next_number,
+            status=ServiceOrderStatus.ABERTA,
+            description=description,
+            opened_at=datetime.now(timezone.utc),
+            public_token=str(uuid.uuid4()),
+            budget_status=BudgetStatus.RASCUNHO,
+        )
+        session.add(os)
+        await session.flush()  # garante que os.id existe para o link
+
+        # Notifica gestores
+        for admin_id in admin_ids:
+            await notif_repo.create(
+                tenant_id=tenant_id,
+                user_id=admin_id,
+                type=NotificationType.JD_ALERT,
+                title=f"⚠️ Alerta JD — {dtc}",
+                message=f"Nova OS #{next_number} criada para {client_name}. {description_raw}",
+                link=f"/service-orders/{os.id}",
+            )
+
+        next_number += 1
+        os_criadas += 1
+        logger.info("deere_os_criada", os_id=str(os.id), client_id=str(client_id), dtc=dtc)
+
+    await session.commit()
+    return os_criadas

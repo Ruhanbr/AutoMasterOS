@@ -147,6 +147,67 @@ def retry_failed_invoices() -> dict:
     return {"dispatched": count, "at": datetime.now(timezone.utc).isoformat()}
 
 
+# ─── Beat: poll JD alerts ─────────────────────────────────────────────────────
+
+@celery_app.task(name="workers.poll_deere_alerts")
+def poll_deere_alerts() -> dict:
+    """
+    Executada pelo Celery Beat a cada 30 minutos.
+    Busca alertas JD de todos os clientes conectados e cria OS automáticas.
+    """
+    from app.core.database import AsyncSessionFactory
+    from app.modules.deere.models import DeereConnection
+    from app.modules.deere import service as deere
+    from app.modules.deere.router import _create_os_from_alerts, _valid_token
+    from sqlalchemy import select
+
+    async def _run() -> dict:
+        total_alerts = 0
+        total_os = 0
+        clients_polled = 0
+
+        async with AsyncSessionFactory() as session:
+            # Busca todas as conexões ativas
+            result = await session.execute(
+                select(DeereConnection).where(DeereConnection.active.is_(True))
+            )
+            connections = list(result.scalars().all())
+
+            for conn in connections:
+                try:
+                    token = await _valid_token(conn, session)
+                    alerts = await deere.get_alerts(token, conn.organization_id)
+                    os_criadas = await _create_os_from_alerts(
+                        session, conn.tenant_id, conn.client_id, alerts
+                    )
+                    total_alerts += len(alerts)
+                    total_os += os_criadas
+                    clients_polled += 1
+                    logger.info(
+                        "deere_poll_cliente",
+                        client_id=str(conn.client_id),
+                        alerts=len(alerts),
+                        os_criadas=os_criadas,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "deere_poll_erro",
+                        client_id=str(conn.client_id),
+                        error=str(exc),
+                    )
+
+        return {
+            "clients_polled": clients_polled,
+            "total_alerts": total_alerts,
+            "total_os_created": total_os,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    result = asyncio.run(_run())
+    logger.info("deere_poll_concluido", **result)
+    return result
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _exponential_backoff(retry_number: int) -> int:

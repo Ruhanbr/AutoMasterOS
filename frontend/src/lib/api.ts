@@ -325,6 +325,18 @@ export const reportsApi = {
     api.get(`/service-orders/${id}/report/whatsapp`),
 };
 
+// ─── Notifications ───────────────────────────────────────────────────────────
+export const notificationsApi = {
+  list: (params?: { unread_only?: boolean }) =>
+    api.get('/notifications', { params }),
+  unreadCount: () =>
+    api.get('/notifications/unread-count'),
+  markRead: (id: string) =>
+    api.post(`/notifications/${id}/read`),
+  markAllRead: () =>
+    api.post('/notifications/read-all'),
+};
+
 // ─── John Deere (por cliente) ─────────────────────────────────────────────────
 export const deereApi = {
   getConnectUrl: (clientId: string) =>

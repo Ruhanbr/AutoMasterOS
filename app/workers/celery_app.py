@@ -69,6 +69,11 @@ celery_app.conf.update(
             "schedule": 300.0,  # a cada 5 minutos
             "options": {"queue": "nfe"},
         },
+        "deere-poll-alerts-every-30min": {
+            "task": "workers.poll_deere_alerts",
+            "schedule": 1800.0,  # a cada 30 minutos
+            "options": {"queue": "default"},
+        },
     },
     # ── Resultados ────────────────────────────────────────────────────────────
     result_expires=86400,   # resultados expiram em 24h
