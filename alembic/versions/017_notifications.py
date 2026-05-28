@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "017"
-down_revision = "016_deere_per_client"
+down_revision = "016"
 branch_labels = None
 depends_on = None
 
