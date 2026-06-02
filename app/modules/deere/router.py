@@ -277,6 +277,7 @@ async def _create_os_from_alerts(
     from datetime import datetime, timezone
     from sqlalchemy import select, func as sqlfunc
     from app.models.service_order import ServiceOrder, ServiceOrderStatus, BudgetStatus
+    from app.models.machine import Machine
     from app.models.client import Client
     from app.repositories.notification_repository import NotificationRepository
     from app.models.notification import NotificationType
@@ -286,6 +287,20 @@ async def _create_os_from_alerts(
         select(Client.name).where(Client.id == client_id)
     )
     client_name = client_result.scalar_one_or_none() or "Cliente"
+
+    # Carrega todas as máquinas ativas do cliente indexadas por serial_number (upper)
+    machines_result = await session.execute(
+        select(Machine).where(
+            Machine.client_id == client_id,
+            Machine.tenant_id == tenant_id,
+            Machine.deleted_at.is_(None),
+        )
+    )
+    machines_by_serial: dict[str, Machine] = {
+        m.serial_number.upper(): m
+        for m in machines_result.scalars().all()
+        if m.serial_number
+    }
 
     # Próximo número de OS para o tenant
     num_result = await session.execute(
@@ -304,17 +319,30 @@ async def _create_os_from_alerts(
         description_raw = alert.get("description") or alert.get("alertType") or dtc
         severity = alert.get("severity", "")
 
+        # Tenta cruzar a máquina JD com o cadastro AutoMaster via serial_number
+        jd_machine: dict = alert.get("machine") or {}
+        jd_serial: str = (jd_machine.get("serialNumber") or jd_machine.get("vin") or "").upper()
+        matched_machine: Machine | None = machines_by_serial.get(jd_serial)
+
+        machine_line = ""
+        if matched_machine:
+            machine_line = f"Máquina: {matched_machine.brand} {matched_machine.model} · S/N {matched_machine.serial_number}\n"
+        elif jd_machine.get("name") or jd_serial:
+            machine_line = f"Máquina JD: {jd_machine.get('name', '')} · S/N {jd_serial or 'N/A'}\n"
+
         description = (
             f"[John Deere — Automático]\n"
             f"Código: {dtc}\n"
             f"Descrição: {description_raw}\n"
             f"Severidade: {severity or 'N/A'}\n"
+            f"{machine_line}"
         )
 
         os = ServiceOrder(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             client_id=client_id,
+            machine_id=matched_machine.id if matched_machine else None,
             number=next_number,
             status=ServiceOrderStatus.ABERTA,
             description=description,
@@ -323,22 +351,34 @@ async def _create_os_from_alerts(
             budget_status=BudgetStatus.RASCUNHO,
         )
         session.add(os)
-        await session.flush()  # garante que os.id existe para o link
+        await session.flush()
 
-        # Notifica gestores
+        # Mensagem da notificação indica se a máquina foi identificada
+        machine_info = (
+            f" — {matched_machine.brand} {matched_machine.model}"
+            if matched_machine
+            else (f" — máquina S/N {jd_serial}" if jd_serial else "")
+        )
         for admin_id in admin_ids:
             await notif_repo.create(
                 tenant_id=tenant_id,
                 user_id=admin_id,
                 type=NotificationType.JD_ALERT,
                 title=f"⚠️ Alerta JD — {dtc}",
-                message=f"Nova OS #{next_number} criada para {client_name}. {description_raw}",
+                message=f"Nova OS #{next_number} para {client_name}{machine_info}. {description_raw}",
                 link=f"/service-orders/{os.id}",
             )
 
         next_number += 1
         os_criadas += 1
-        logger.info("deere_os_criada", os_id=str(os.id), client_id=str(client_id), dtc=dtc)
+        logger.info(
+            "deere_os_criada",
+            os_id=str(os.id),
+            client_id=str(client_id),
+            dtc=dtc,
+            machine_id=str(matched_machine.id) if matched_machine else None,
+            serial_matched=bool(matched_machine),
+        )
 
     await session.commit()
     return os_criadas
