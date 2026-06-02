@@ -71,6 +71,7 @@ class ServiceOrderUpdate(AutoMasterBaseModel):
     solution: str | None = None
     technician_notes: str | None = None
     technician_name: str | None = None
+    technician_user_id: uuid.UUID | None = None   # atribuição de técnico
     expected_delivery_at: datetime | None = None
     items: list[ServiceOrderItemCreate] | None = None
 

@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/table';
 import { PageSpinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { serviceOrdersApi, invoicesApi, reportsApi } from '@/lib/api';
+import { serviceOrdersApi, invoicesApi, reportsApi, usersApi } from '@/lib/api';
 import { formatCurrency, formatDate, formatDocument } from '@/lib/utils';
 import type { ServiceOrder, Invoice, ServiceOrderStatus } from '@/types';
 import type { AxiosError } from 'axios';
@@ -89,6 +89,7 @@ export default function ServiceOrderDetailPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [waLoading, setWaLoading] = useState(false);
   const [budgetLoading, setBudgetLoading] = useState(false);
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState<string>('');
 
   const { data: os, isLoading, error } = useQuery<ServiceOrder>({
     queryKey: ['service-order', params.id],
@@ -109,6 +110,27 @@ export default function ServiceOrderDetailPage() {
       }
     },
     enabled: !!os,
+  });
+
+  // Lista de técnicos para atribuição
+  const { data: usersData } = useQuery({
+    queryKey: ['users-technicians'],
+    queryFn: async () => (await usersApi.list({ active_only: true })).data,
+    staleTime: 120_000,
+  });
+  const technicians: { id: string; full_name: string; role: string }[] =
+    (usersData as { id: string; full_name: string; role: string }[] | undefined) ?? [];
+
+  // Mutation de atribuição de técnico
+  const assignMutation = useMutation({
+    mutationFn: async (technicianUserId: string) =>
+      serviceOrdersApi.update(params.id, { technician_user_id: technicianUserId }),
+    onSuccess: () => {
+      toast.success('Técnico atribuído! Ele receberá uma notificação.');
+      queryClient.invalidateQueries({ queryKey: ['service-order', params.id] });
+      setSelectedTechnicianId('');
+    },
+    onError: () => toast.error('Erro ao atribuir técnico'),
   });
 
   const statusMutation = useMutation({
@@ -540,6 +562,47 @@ export default function ServiceOrderDetailPage() {
                 <p className="text-sm text-gray-500">{formatDocument(os.client.document)}</p>
               </CardContent>
             </Card>
+
+            {/* Atribuição de Técnico */}
+            {os.status !== 'FINALIZADA' && os.status !== 'CANCELADA' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <User className="w-4 h-4 text-gray-400" />
+                    Técnico Responsável
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  {os.technician_user_id ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                      <User className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <span className="font-medium">{os.technician_name || 'Técnico atribuído'}</span>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">Nenhum técnico atribuído</p>
+                  )}
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                      value={selectedTechnicianId}
+                      onChange={(e) => setSelectedTechnicianId(e.target.value)}
+                    >
+                      <option value="">Selecionar técnico...</option>
+                      {technicians.map((t) => (
+                        <option key={t.id} value={t.id}>{t.full_name}</option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      disabled={!selectedTechnicianId || assignMutation.isPending}
+                      onClick={() => assignMutation.mutate(selectedTechnicianId)}
+                    >
+                      {assignMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Atribuir'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Machine */}
             {os.machine && (

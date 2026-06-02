@@ -170,6 +170,10 @@ class ServiceOrderService:
         if order.status == ServiceOrderStatus.FINALIZADA:
             raise BusinessRuleException("OS finalizada não pode ser editada")
 
+        # Detecta atribuição de técnico ANTES de aplicar as mudanças
+        previous_technician_id = order.technician_user_id
+        new_technician_id = data.technician_user_id if "technician_user_id" in data.model_fields_set else None
+
         update_data = data.model_dump(exclude_unset=True, exclude={"items"})
         for field, value in update_data.items():
             setattr(order, field, value)
@@ -182,7 +186,41 @@ class ServiceOrderService:
         order.recalculate_totals()
         updated = await self._repo.save(order)
         logger.info("os_atualizada", os_id=str(order_id))
+
+        # Notifica o técnico se foi atribuído (ou re-atribuído) a esta OS
+        technician_changed = (
+            new_technician_id is not None
+            and new_technician_id != previous_technician_id
+        )
+        if technician_changed:
+            await self._notify_technician_assigned(tenant_id, updated, new_technician_id)
+
         return updated
+
+    async def _notify_technician_assigned(
+        self,
+        tenant_id: uuid.UUID,
+        order: ServiceOrder,
+        technician_id: uuid.UUID,
+    ) -> None:
+        from app.repositories.notification_repository import NotificationRepository
+        from app.models.notification import NotificationType
+
+        client_name = order.client.name if order.client else "cliente"
+        repo = NotificationRepository(self._session)
+        await repo.create(
+            tenant_id=tenant_id,
+            user_id=technician_id,
+            type=NotificationType.OS_ATRIBUIDA,
+            title=f"OS #{order.number} atribuída a você",
+            message=f"Você foi designado para a OS #{order.number} do cliente {client_name}.",
+            link=f"/service-orders/{order.id}",
+        )
+        logger.info(
+            "notificacao_tecnico_atribuido",
+            os_id=str(order.id),
+            technician_id=str(technician_id),
+        )
 
     # ─── Transição de Status ──────────────────────────────────────────────────
 

@@ -202,7 +202,7 @@ export const serviceOrdersApi = {
     api.get('/service-orders', { params }),
   get: (id: string) => api.get(`/service-orders/${id}`),
   create: (data: unknown) => api.post('/service-orders', data),
-  update: (id: string, data: unknown) => api.put(`/service-orders/${id}`, data),
+  update: (id: string, data: unknown) => api.patch(`/service-orders/${id}`, data),
   updateStatus: (id: string, status: string, notes?: string) =>
     api.patch(`/service-orders/${id}/status`, { status, notes }),
   /**
