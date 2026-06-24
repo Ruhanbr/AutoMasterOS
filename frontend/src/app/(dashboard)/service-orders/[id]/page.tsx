@@ -119,7 +119,7 @@ export default function ServiceOrderDetailPage() {
     staleTime: 120_000,
   });
   const technicians: { id: string; full_name: string; role: string }[] =
-    (usersData as { id: string; full_name: string; role: string }[] | undefined) ?? [];
+    (usersData as { items: { id: string; full_name: string; role: string }[] } | undefined)?.items ?? [];
 
   // Mutation de atribuição de técnico
   const assignMutation = useMutation({
