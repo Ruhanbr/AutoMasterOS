@@ -65,7 +65,7 @@ function KpiCard({
               </p>
             )}
           </div>
-          <div className={`hidden sm:flex flex-shrink-0 w-9 h-9 sm:w-11 sm:h-11 rounded-xl items-center justify-center ${iconBg}`}>
+          <div className={`flex flex-shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-xl items-center justify-center ${iconBg}`}>
             <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColor}`} />
           </div>
         </div>
@@ -193,14 +193,14 @@ export default function DashboardPage() {
               iconColor="text-blue-600"
             />
             <KpiCard
-              title="Em Andamento"
+              title="Andamento"
               value={String(data.os_em_andamento)}
               icon={Clock}
               iconBg="bg-yellow-50"
               iconColor="text-yellow-600"
             />
             <KpiCard
-              title="Finalizadas"
+              title="Concluídas"
               value={String(data.os_finalizadas)}
               icon={CheckCircle}
               iconBg="bg-green-50"
