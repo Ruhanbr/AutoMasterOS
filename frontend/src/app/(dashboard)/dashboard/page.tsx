@@ -52,11 +52,11 @@ function KpiCard({
 }) {
   return (
     <Card>
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between">
+      <CardContent className="pt-4 pb-3 px-3 sm:pt-5 sm:pb-4 sm:px-6">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1 truncate">{value}</p>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-tight sm:tracking-wider truncate">{title}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1 truncate">{value}</p>
             {sub && (
               <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                 {trend === 'up'      && <ArrowUpRight   className="w-3 h-3 text-green-500" />}
@@ -65,8 +65,8 @@ function KpiCard({
               </p>
             )}
           </div>
-          <div className={`flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center ${iconBg}`}>
-            <Icon className={`w-5 h-5 ${iconColor}`} />
+          <div className={`flex-shrink-0 w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center ${iconBg}`}>
+            <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColor}`} />
           </div>
         </div>
       </CardContent>
@@ -141,12 +141,12 @@ export default function DashboardPage() {
   return (
     <div>
       <Header title="Dashboard" />
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
 
         {/* ── KPI Row 1: Financeiro ── */}
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Financeiro — mês atual</h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
             <KpiCard
               title="Receita"
               value={formatCurrency(data.receita_mes_atual)}
@@ -184,7 +184,7 @@ export default function DashboardPage() {
         {/* ── KPI Row 2: OS ── */}
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Ordens de Serviço — total</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
             <KpiCard
               title="Abertas"
               value={String(data.os_abertas)}
