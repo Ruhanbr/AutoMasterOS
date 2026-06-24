@@ -65,7 +65,7 @@ function KpiCard({
               </p>
             )}
           </div>
-          <div className={`flex-shrink-0 w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center ${iconBg}`}>
+          <div className={`hidden sm:flex flex-shrink-0 w-9 h-9 sm:w-11 sm:h-11 rounded-xl items-center justify-center ${iconBg}`}>
             <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColor}`} />
           </div>
         </div>
