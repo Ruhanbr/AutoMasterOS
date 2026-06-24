@@ -33,7 +33,7 @@ export function Header({ title }: HeaderProps) {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between flex-shrink-0">
+    <header className="bg-white border-b border-gray-200 pl-14 pr-4 md:px-6 h-14 flex items-center justify-between flex-shrink-0">
       <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
 
       {/* Actions */}

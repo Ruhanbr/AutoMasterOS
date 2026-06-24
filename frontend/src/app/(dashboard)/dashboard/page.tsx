@@ -55,7 +55,7 @@ function KpiCard({
       <CardContent className="pt-4 pb-3 px-3 sm:pt-5 sm:pb-4 sm:px-6">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-tight sm:tracking-wider truncate">{title}</p>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-tight sm:tracking-wider leading-tight">{title}</p>
             <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1 truncate">{value}</p>
             {sub && (
               <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
