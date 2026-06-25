@@ -26,6 +26,7 @@ import {
   XCircle,
   Ban,
   Navigation,
+  Pencil,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -259,15 +260,25 @@ export default function ServiceOrderDetailPage() {
     <div>
       <Header title={`OS #${os.number}`} />
       <div className="p-6 max-w-5xl mx-auto space-y-6">
-        {/* Back + Status */}
-        <div className="flex items-center justify-between">
+        {/* Back + Edit + Status */}
+        <div className="flex items-center justify-between gap-3">
           <Link href="/service-orders">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="w-4 h-4" />
               Voltar
             </Button>
           </Link>
-          <StatusBadge status={os.status} />
+          <div className="flex items-center gap-2">
+            {(os.status === 'ABERTA' || os.status === 'EM_ANDAMENTO') && (
+              <Link href={`/service-orders/${params.id}/edit`}>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Pencil className="w-3.5 h-3.5" />
+                  Editar
+                </Button>
+              </Link>
+            )}
+            <StatusBadge status={os.status} />
+          </div>
         </div>
 
         {/* ── Portal do Cliente / Aprovação de Orçamento ── */}
