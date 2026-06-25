@@ -103,6 +103,7 @@ class ServiceOrderService:
 
         if data.items:
             await self._upsert_items(order, data.items)
+            order.recalculate_totals()
 
         logger.info(
             "os_criada",

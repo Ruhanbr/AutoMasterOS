@@ -535,27 +535,45 @@ export default function ServiceOrderDetailPage() {
                   </Table>
                 )}
 
-                {/* Totals */}
-                <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Serviços</span>
-                    <span className="font-medium">{formatCurrency(os.total_services)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Peças</span>
-                    <span className="font-medium">{formatCurrency(os.total_parts)}</span>
-                  </div>
-                  {os.total_displacement > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Total Deslocamento</span>
-                      <span className="font-medium">{formatCurrency(os.total_displacement)}</span>
+                {/* Totals — computed from items for accuracy */}
+                {(() => {
+                  const tServicos = os.items.filter(i => i.item_type === 'SERVICO').reduce((s, i) => s + Number(i.total_price), 0);
+                  const tPecas = os.items.filter(i => i.item_type === 'PECA').reduce((s, i) => s + Number(i.total_price), 0);
+                  const tDeslocamento = os.items.filter(i => i.item_type === 'DESLOCAMENTO').reduce((s, i) => s + Number(i.total_price), 0);
+                  const tTotal = tServicos + tPecas + tDeslocamento - Number(os.total_discount ?? 0);
+                  return (
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+                      {tServicos > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Total Serviços</span>
+                          <span className="font-medium">{formatCurrency(tServicos)}</span>
+                        </div>
+                      )}
+                      {tPecas > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Total Peças</span>
+                          <span className="font-medium">{formatCurrency(tPecas)}</span>
+                        </div>
+                      )}
+                      {tDeslocamento > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Total Deslocamento</span>
+                          <span className="font-medium">{formatCurrency(tDeslocamento)}</span>
+                        </div>
+                      )}
+                      {Number(os.total_discount ?? 0) > 0 && (
+                        <div className="flex justify-between text-sm text-red-600">
+                          <span>Desconto</span>
+                          <span className="font-medium">- {formatCurrency(Number(os.total_discount))}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-2 mt-2">
+                        <span>Total Geral</span>
+                        <span className="text-green-700">{formatCurrency(tTotal)}</span>
+                      </div>
                     </div>
-                  )}
-                  <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-2 mt-2">
-                    <span>Total Geral</span>
-                    <span className="text-green-700">{formatCurrency(os.total_amount)}</span>
-                  </div>
-                </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           </div>
