@@ -58,7 +58,7 @@ function StatusBadge({ status }: { status: ServiceOrderStatus }) {
     case 'CANCELADA':
       return <Badge variant="destructive" className="text-sm px-3 py-1">Cancelada</Badge>;
     default:
-      return <Badge variant="secondary" className="text-sm px-3 py-1">{status}</Badge>;
+      return <Badge variant="secondary" className="text-sm px-3 py-1">{String(status)}</Badge>;
   }
 }
 
@@ -75,7 +75,7 @@ function InvoiceStatusBadge({ status }: { status: string }) {
     case 'ERRO':
       return <Badge variant="destructive">Erro</Badge>;
     default:
-      return <Badge variant="secondary">{status}</Badge>;
+      return <Badge variant="secondary">{String(status)}</Badge>;
   }
 }
 
@@ -146,8 +146,9 @@ export default function ServiceOrderDetailPage() {
       setNotes('');
       setShowNotesFor(null);
     },
-    onError: (error: AxiosError<{ detail: string }>) => {
-      toast.error(error.response?.data?.detail || 'Erro ao atualizar status');
+    onError: (error: AxiosError<{ detail: string | { code: string; message: string } }>) => {
+      const d = error.response?.data?.detail;
+      toast.error(typeof d === 'object' && d !== null ? d.message : d || 'Erro ao atualizar status');
     },
   });
 
@@ -163,8 +164,9 @@ export default function ServiceOrderDetailPage() {
       setNotes('');
       setShowNotesFor(null);
     },
-    onError: (error: AxiosError<{ detail: string }>) => {
-      toast.error(error.response?.data?.detail || 'Erro ao finalizar OS');
+    onError: (error: AxiosError<{ detail: string | { code: string; message: string } }>) => {
+      const d = error.response?.data?.detail;
+      toast.error(typeof d === 'object' && d !== null ? d.message : d || 'Erro ao finalizar OS');
     },
   });
 
