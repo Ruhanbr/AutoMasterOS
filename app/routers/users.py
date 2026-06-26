@@ -17,6 +17,7 @@ from app.core.security import hash_password
 logger = get_logger(__name__)
 from app.models.user import UserRole
 from app.repositories.tenant_repository import TenantRepository
+from sqlalchemy import select as _sa_select, func as _func
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import UserResponse
 from app.services.tecnico_limit_service import (
@@ -27,6 +28,20 @@ from app.services.tecnico_limit_service import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 SIGNATURE_DIR = Path("/app/static/signatures")
+
+
+async def _count_active_admins(session, tenant_id: uuid.UUID, exclude_user_id: uuid.UUID | None = None) -> int:
+    """Retorna quantos ADMINs ativos o tenant possui, opcionalmente excluindo um usuário."""
+    from app.models.user import User
+    q = _sa_select(_func.count(User.id)).where(
+        User.tenant_id == tenant_id,
+        User.role == UserRole.ADMIN,
+        User.active.is_(True),
+    )
+    if exclude_user_id:
+        q = q.where(User.id != exclude_user_id)
+    result = await session.execute(q)
+    return result.scalar() or 0
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
@@ -134,9 +149,28 @@ async def update_user(
             raise HTTPException(status_code=409, detail="E-mail já em uso por outro usuário.")
         user.email = payload.email
     if payload.role is not None:
+        # Impede rebaixar o último ADMIN ativo do tenant
+        if user.role == UserRole.ADMIN and payload.role != UserRole.ADMIN:
+            remaining = await _count_active_admins(session, tenant_id, exclude_user_id=user_id)
+            if remaining == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Não é possível alterar o papel deste usuário: ele é o único administrador ativo da oficina.",
+                )
         user.role = payload.role
-    if payload.active is not None:
+
+    if payload.active is not None and payload.active is False:
+        # Impede desativar o último ADMIN ativo do tenant
+        if user.role == UserRole.ADMIN:
+            remaining = await _count_active_admins(session, tenant_id, exclude_user_id=user_id)
+            if remaining == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Não é possível desativar este usuário: ele é o único administrador ativo da oficina.",
+                )
         user.active = payload.active
+    elif payload.active is True:
+        user.active = True
 
     user = await repo.save(user)
     await session.commit()
@@ -172,6 +206,15 @@ async def deactivate_user(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Você não pode desativar a sua própria conta.",
         )
+
+    # Impede desativar o último ADMIN ativo do tenant
+    if user.role == UserRole.ADMIN:
+        remaining = await _count_active_admins(session, tenant_id, exclude_user_id=user_id)
+        if remaining == 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Não é possível desativar este usuário: ele é o único administrador ativo da oficina.",
+            )
 
     # Verifica OS abertas ou em andamento vinculadas ao usuário
     os_ativas = await session.execute(
