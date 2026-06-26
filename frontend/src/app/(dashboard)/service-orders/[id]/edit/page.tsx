@@ -78,6 +78,7 @@ export default function EditServiceOrderPage() {
     handleSubmit,
     watch,
     reset,
+    setValue,
     control,
     formState: { errors },
   } = useForm<FormData>({
