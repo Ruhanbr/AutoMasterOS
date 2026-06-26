@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { tenantsApi } from '@/lib/api';
 import { clearTokens, getAccessToken } from '@/lib/auth';
+import { copyToClipboard } from '@/lib/utils';
 import type { Tenant, UpdateTenantPayload } from '@/types';
 import type { AxiosError } from 'axios'; // usado no extractError helper
 
@@ -177,7 +178,7 @@ function LoginLinkButton({ tenantId }: { tenantId: string }) {
       : `/login?tenant=${tenantId}`;
 
   const copy = async () => {
-    await navigator.clipboard.writeText(link);
+    await copyToClipboard(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -40,6 +40,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/components/ui/
 import { PageSpinner } from '@/components/ui/spinner';
 import { usersApi } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
+import { copyToClipboard } from '@/lib/utils';
 import type { User, UserRole } from '@/types';
 import type { AxiosError } from 'axios';
 
@@ -224,28 +225,9 @@ export default function TecnicosPage() {
   const loginLink = tenantId ? `${appUrl}/login?tenant=${tenantId}` : null;
 
   const copyText = (text: string, label: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => toast.success(`${label} copiado!`)).catch(() => fallbackCopy(text, label));
-    } else {
-      fallbackCopy(text, label);
-    }
-  };
-
-  const fallbackCopy = (text: string, label: string) => {
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
-    document.body.appendChild(el);
-    el.focus();
-    el.select();
-    try {
-      document.execCommand('copy');
-      toast.success(`${label} copiado!`);
-    } catch {
-      toast.error('Não foi possível copiar. Selecione e copie manualmente.');
-    }
-    document.body.removeChild(el);
+    copyToClipboard(text)
+      .then(() => toast.success(`${label} copiado!`))
+      .catch(() => toast.error('Não foi possível copiar. Selecione e copie manualmente.'));
   };
 
   // ── Render ────────────────────────────────────────────────────────────────

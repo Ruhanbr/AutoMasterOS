@@ -43,7 +43,7 @@ import {
 import { PageSpinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { serviceOrdersApi, invoicesApi, reportsApi, usersApi } from '@/lib/api';
-import { formatCurrency, formatDate, formatDocument } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDocument, copyToClipboard } from '@/lib/utils';
 import type { ServiceOrder, Invoice, ServiceOrderStatus } from '@/types';
 import type { AxiosError } from 'axios';
 
@@ -262,7 +262,7 @@ export default function ServiceOrderDetailPage() {
     if (!os?.public_token) return;
     const baseUrl = window.location.origin;
     const link = `${baseUrl}/os/${os.public_token}`;
-    navigator.clipboard.writeText(link);
+    copyToClipboard(link);
     toast.success('Link copiado!');
   };
 
