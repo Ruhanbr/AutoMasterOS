@@ -15,6 +15,7 @@ class ServiceOrderItemCreate(AutoMasterBaseModel):
     description: str
     ncm_code: str | None = None
     part_number: str | None = None
+    stock_item_id: uuid.UUID | None = None
     quantity: Decimal = Decimal("1.000")
     unit_price: Decimal
     discount: Decimal = Decimal("0.00")
@@ -50,6 +51,7 @@ class ServiceOrderItemResponse(UUIDSchema, TimestampSchema):
     description: str
     ncm_code: str | None
     part_number: str | None
+    stock_item_id: uuid.UUID | None = None
     quantity: Decimal
     unit_price: Decimal
     discount: Decimal

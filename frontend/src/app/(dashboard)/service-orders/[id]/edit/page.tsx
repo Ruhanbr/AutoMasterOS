@@ -27,6 +27,7 @@ const itemSchema = z.object({
   description: z.string().min(1, 'Obrigatório'),
   quantity: z.coerce.number().positive('Deve ser positivo'),
   unit_price: z.coerce.number().min(0, 'Deve ser >= 0'),
+  stock_item_id: z.string().optional(),
 });
 
 const schema = z.object({
@@ -103,6 +104,7 @@ export default function EditServiceOrderPage() {
         description: item.description,
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
+        stock_item_id: item.stock_item_id ?? undefined,
       })) ?? [],
     });
   }, [os, reset]);
@@ -124,6 +126,7 @@ export default function EditServiceOrderPage() {
               description: i.description,
               quantity: i.quantity,
               unit_price: i.unit_price,
+              stock_item_id: i.stock_item_id || undefined,
             }))
           : undefined,
       };
@@ -387,6 +390,7 @@ export default function EditServiceOrderPage() {
                                     onClick={() => {
                                       setValue(`items.${index}.description`, item.description);
                                       setValue(`items.${index}.unit_price`, Number(item.sale_price));
+                                      setValue(`items.${index}.stock_item_id`, item.id);
                                       setOpenStockPicker(null);
                                       setStockSearch((p) => ({ ...p, [index]: '' }));
                                     }}

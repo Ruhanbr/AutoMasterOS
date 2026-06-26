@@ -27,6 +27,7 @@ const itemSchema = z.object({
   description: z.string().min(1, 'Obrigatório'),
   quantity: z.coerce.number().positive('Deve ser positivo'),
   unit_price: z.coerce.number().min(0, 'Deve ser >= 0'),
+  stock_item_id: z.string().optional(),
 });
 
 const schema = z.object({
@@ -111,7 +112,15 @@ export default function NewServiceOrderPage() {
         machine_id: data.machine_id || undefined,
         description: data.description,
         technician_name: data.technician_name || undefined,
-        items: data.items?.length ? data.items : undefined,
+        items: data.items?.length
+          ? data.items.map((it) => ({
+              item_type: it.item_type,
+              description: it.description,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              stock_item_id: it.stock_item_id || undefined,
+            }))
+          : undefined,
       });
       return res.data;
     },
@@ -330,7 +339,14 @@ export default function NewServiceOrderPage() {
                     >
                       <div className="col-span-2">
                         <Label className="text-xs">Tipo</Label>
-                        <Select {...register(`items.${index}.item_type`)} className="mt-1">
+                        <Select
+                          {...register(`items.${index}.item_type`)}
+                          className="mt-1"
+                          onChange={(e) => {
+                            setValue(`items.${index}.item_type`, e.target.value as 'SERVICO' | 'PECA' | 'DESLOCAMENTO');
+                            setValue(`items.${index}.stock_item_id`, undefined);
+                          }}
+                        >
                           <option value="SERVICO">Serviço</option>
                           <option value="PECA">Peça</option>
                           <option value="DESLOCAMENTO">Deslocamento</option>
@@ -410,6 +426,7 @@ export default function NewServiceOrderPage() {
                                     onClick={() => {
                                       setValue(`items.${index}.description`, item.description);
                                       setValue(`items.${index}.unit_price`, Number(item.sale_price));
+                                      setValue(`items.${index}.stock_item_id`, item.id);
                                       setOpenStockPicker(null);
                                       setStockSearch((p) => ({ ...p, [index]: '' }));
                                     }}

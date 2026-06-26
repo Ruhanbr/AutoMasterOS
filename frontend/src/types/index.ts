@@ -105,6 +105,7 @@ export interface ServiceOrderItem {
   quantity: number;
   unit_price: number;
   total_price: number;
+  stock_item_id?: string | null;
 }
 
 export interface ServiceOrderClient {

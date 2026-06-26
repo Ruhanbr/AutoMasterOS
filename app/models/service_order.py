@@ -204,6 +204,13 @@ class ServiceOrderItem(BaseModel):
         index=True,
     )
 
+    stock_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("stock_items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     item_type: Mapped[ItemType] = mapped_column(
         String(20), nullable=False, index=True
     )

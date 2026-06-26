@@ -321,6 +321,18 @@ class ServiceOrderService:
 
         await self._repo.save(order)
 
+        # Baixa automática de estoque para cada peça vinculada
+        from app.modules.stock.service import StockService as _StockService
+        for item in order.items:
+            if item.item_type == ItemType.PECA and item.stock_item_id is not None:
+                await _StockService.reduce_for_os(
+                    session=self._session,
+                    tenant_id=tenant_id,
+                    stock_item_id=item.stock_item_id,
+                    quantity=item.quantity,
+                    service_order_id=order_id,
+                )
+
         # Flush para garantir que ambos os registros estão no banco
         # antes de despachar a task (commit acontece ao sair do contexto da session)
         await self._session.flush()
@@ -396,6 +408,7 @@ class ServiceOrderService:
         for item_data in items_data:
             item = ServiceOrderItem(
                 service_order_id=order.id,
+                stock_item_id=item_data.stock_item_id,
                 item_type=item_data.item_type,
                 description=item_data.description,
                 ncm_code=item_data.ncm_code,
