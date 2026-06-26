@@ -83,6 +83,12 @@ class ServiceOrderStatusUpdate(AutoMasterBaseModel):
     notes: str | None = None
 
 
+class ServiceOrderDatesUpdate(AutoMasterBaseModel):
+    opened_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
 class SendBudgetRequest(AutoMasterBaseModel):
     """Enviado quando o técnico quer mandar o orçamento para aprovação do cliente."""
     message: str | None = None  # mensagem opcional para incluir no portal

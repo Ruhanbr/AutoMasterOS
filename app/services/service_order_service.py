@@ -40,6 +40,7 @@ from app.repositories.service_order_repository import ServiceOrderRepository
 from app.schemas.common import PaginatedResponse
 from app.schemas.service_order import (
     ServiceOrderCreate,
+    ServiceOrderDatesUpdate,
     ServiceOrderItemCreate,
     ServiceOrderUpdate,
 )
@@ -222,6 +223,32 @@ class ServiceOrderService:
             os_id=str(order.id),
             technician_id=str(technician_id),
         )
+
+    # ─── Correção de Datas ────────────────────────────────────────────────────
+
+    async def update_dates(
+        self,
+        tenant_id: uuid.UUID,
+        order_id: uuid.UUID,
+        data: ServiceOrderDatesUpdate,
+    ) -> ServiceOrder:
+        order = await self._repo.get_by_id_and_tenant(order_id, tenant_id)
+        if order is None:
+            raise ResourceNotFoundException("Ordem de Serviço", str(order_id))
+
+        if order.status == ServiceOrderStatus.CANCELADA:
+            raise BusinessRuleException("OS cancelada não pode ter datas alteradas")
+
+        if data.opened_at is not None:
+            order.opened_at = data.opened_at
+        if data.started_at is not None:
+            order.started_at = data.started_at
+        if data.finished_at is not None:
+            order.finished_at = data.finished_at
+
+        updated = await self._repo.save(order)
+        logger.info("os_datas_corrigidas", os_id=str(order_id))
+        return updated
 
     # ─── Transição de Status ──────────────────────────────────────────────────
 

@@ -205,6 +205,8 @@ export const serviceOrdersApi = {
   update: (id: string, data: unknown) => api.patch(`/service-orders/${id}`, data),
   updateStatus: (id: string, status: string, notes?: string) =>
     api.patch(`/service-orders/${id}/status`, { status, notes }),
+  updateDates: (id: string, data: { opened_at?: string; started_at?: string; finished_at?: string }) =>
+    api.patch(`/service-orders/${id}/dates`, data),
   /**
    * Finaliza a OS usando o endpoint completo:
    * registra receita financeira + baixa estoque + cria Invoice + dispara NF-e.

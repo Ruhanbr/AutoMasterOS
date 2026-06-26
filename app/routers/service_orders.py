@@ -13,6 +13,7 @@ from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.service_order import (
     SendBudgetRequest,
     ServiceOrderCreate,
+    ServiceOrderDatesUpdate,
     ServiceOrderItemCreate,
     ServiceOrderItemResponse,
     ServiceOrderResponse,
@@ -127,6 +128,21 @@ async def update_service_order(
 ):
     try:
         order = await ServiceOrderService(session).update(tenant_id, order_id, data)
+        return ServiceOrderResponse.model_validate(order)
+    except AutoMasterException as exc:
+        raise to_http_exception(exc)
+
+
+@router.patch("/{order_id}/dates", response_model=ServiceOrderResponse)
+async def update_dates(
+    order_id: uuid.UUID,
+    data: ServiceOrderDatesUpdate,
+    tenant_id: TenantId,
+    session: DbSession,
+    current_user: CurrentUser,
+):
+    try:
+        order = await ServiceOrderService(session).update_dates(tenant_id, order_id, data)
         return ServiceOrderResponse.model_validate(order)
     except AutoMasterException as exc:
         raise to_http_exception(exc)

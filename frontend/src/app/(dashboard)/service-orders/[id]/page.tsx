@@ -91,6 +91,8 @@ export default function ServiceOrderDetailPage() {
   const [waLoading, setWaLoading] = useState(false);
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<string>('');
+  const [showDatesForm, setShowDatesForm] = useState(false);
+  const [datesForm, setDatesForm] = useState({ opened_at: '', started_at: '', finished_at: '' });
 
   const { data: os, isLoading, error } = useQuery<ServiceOrder>({
     queryKey: ['service-order', params.id],
@@ -167,6 +169,20 @@ export default function ServiceOrderDetailPage() {
     onError: (error: AxiosError<{ detail: string | { code: string; message: string } }>) => {
       const d = error.response?.data?.detail;
       toast.error(typeof d === 'object' && d !== null ? d.message : d || 'Erro ao finalizar OS');
+    },
+  });
+
+  const datesMutation = useMutation({
+    mutationFn: async (data: { opened_at?: string; started_at?: string; finished_at?: string }) =>
+      serviceOrdersApi.updateDates(params.id, data),
+    onSuccess: () => {
+      toast.success('Datas atualizadas!');
+      queryClient.invalidateQueries({ queryKey: ['service-order', params.id] });
+      setShowDatesForm(false);
+    },
+    onError: (error: AxiosError<{ detail: string | { code: string; message: string } }>) => {
+      const d = error.response?.data?.detail;
+      toast.error(typeof d === 'object' && d !== null ? d.message : d || 'Erro ao salvar datas');
     },
   });
 
@@ -462,21 +478,103 @@ export default function ServiceOrderDetailPage() {
                     <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{os.technician_notes}</p>
                   </div>
                 )}
-                <div className="grid grid-cols-3 gap-4 pt-2 border-t border-gray-100">
-                  <div>
-                    <p className="text-xs text-gray-500">Abertura</p>
-                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(os.opened_at)}</p>
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Datas</p>
+                    {os.status !== 'CANCELADA' && (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                        onClick={() => {
+                          const toLocal = (iso?: string | null) => iso ? iso.slice(0, 16) : '';
+                          setDatesForm({
+                            opened_at: toLocal(os.opened_at),
+                            started_at: toLocal(os.started_at),
+                            finished_at: toLocal(os.finished_at),
+                          });
+                          setShowDatesForm(true);
+                        }}
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Corrigir datas
+                      </button>
+                    )}
                   </div>
-                  {os.started_at && (
-                    <div>
-                      <p className="text-xs text-gray-500">Início</p>
-                      <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(os.started_at)}</p>
+
+                  {showDatesForm ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">Abertura</label>
+                          <input
+                            type="datetime-local"
+                            className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            value={datesForm.opened_at}
+                            onChange={(e) => setDatesForm((p) => ({ ...p, opened_at: e.target.value }))}
+                          />
+                        </div>
+                        {(os.status === 'EM_ANDAMENTO' || os.status === 'FINALIZADA') && (
+                          <div>
+                            <label className="text-xs text-gray-500 block mb-1">Início do atendimento</label>
+                            <input
+                              type="datetime-local"
+                              className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              value={datesForm.started_at}
+                              onChange={(e) => setDatesForm((p) => ({ ...p, started_at: e.target.value }))}
+                            />
+                          </div>
+                        )}
+                        {os.status === 'FINALIZADA' && (
+                          <div>
+                            <label className="text-xs text-gray-500 block mb-1">Finalização</label>
+                            <input
+                              type="datetime-local"
+                              className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              value={datesForm.finished_at}
+                              onChange={(e) => setDatesForm((p) => ({ ...p, finished_at: e.target.value }))}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={datesMutation.isPending}
+                          onClick={() => {
+                            const toISO = (val: string) => val ? new Date(val).toISOString() : undefined;
+                            datesMutation.mutate({
+                              opened_at: toISO(datesForm.opened_at),
+                              started_at: toISO(datesForm.started_at),
+                              finished_at: toISO(datesForm.finished_at),
+                            });
+                          }}
+                        >
+                          {datesMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                          Salvar
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setShowDatesForm(false)}>
+                          Cancelar
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                  {os.finished_at && (
-                    <div>
-                      <p className="text-xs text-gray-500">Finalização</p>
-                      <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(os.finished_at)}</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs text-gray-500">Abertura</p>
+                        <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(os.opened_at)}</p>
+                      </div>
+                      {os.started_at && (
+                        <div>
+                          <p className="text-xs text-gray-500">Início</p>
+                          <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(os.started_at)}</p>
+                        </div>
+                      )}
+                      {os.finished_at && (
+                        <div>
+                          <p className="text-xs text-gray-500">Finalização</p>
+                          <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(os.finished_at)}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
