@@ -31,8 +31,8 @@ from app.models.user import User, UserRole
 PLATFORM_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 PLATFORM_DOCUMENT  = "00000000000000"
 
-SUPER_ADMIN_EMAIL    = "master@automaster.com"
-SUPER_ADMIN_PASSWORD = "AutoMaster@2026"
+SUPER_ADMIN_EMAIL    = "automasterordemdeservico@gmail.com"
+SUPER_ADMIN_PASSWORD = "AutoMaster2026"
 SUPER_ADMIN_NAME     = "Administrador Master"
 # ─────────────────────────────────────────────────────────────────────────────
 
