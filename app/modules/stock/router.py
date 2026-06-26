@@ -24,7 +24,7 @@ async def list_stock_items(
     session: DbSession,
     current_user: CurrentUser,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
 ) -> StockItemListResponse:
     try:
         svc = StockService(session)
