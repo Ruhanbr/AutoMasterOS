@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Trash2, ArrowLeft, Loader2, Wrench, Search } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Loader2, Wrench, Search, Package } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,9 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { serviceOrdersApi, clientsApi, machinesApi } from '@/lib/api';
+import { serviceOrdersApi, clientsApi, machinesApi, stockApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import type { Client, Machine, PaginatedResponse } from '@/types';
+import type { Client, Machine, PaginatedResponse, StockItem, StockItemListResponse } from '@/types';
 import type { AxiosError } from 'axios';
 
 const itemSchema = z.object({
@@ -44,6 +44,8 @@ export default function NewServiceOrderPage() {
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [openStockPicker, setOpenStockPicker] = useState<number | null>(null);
+  const [stockSearch, setStockSearch] = useState<Record<number, string>>({});
 
   const {
     register,
@@ -72,6 +74,22 @@ export default function NewServiceOrderPage() {
     },
     enabled: clientSearch.length >= 1 && !selectedClient,
   });
+
+  // ── Stock items ───────────────────────────────────────────────────────────
+  const { data: stockData } = useQuery<StockItemListResponse>({
+    queryKey: ['stock-items'],
+    queryFn: async () => (await stockApi.list({ page_size: 500 })).data,
+    staleTime: 120_000,
+  });
+  const allStock: StockItem[] = stockData?.items?.filter((i) => i.active) ?? [];
+
+  const filteredStock = (idx: number) => {
+    const q = (stockSearch[idx] ?? '').toLowerCase().trim();
+    const items = q
+      ? allStock.filter((i) => i.description.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
+      : allStock;
+    return items.slice(0, 10);
+  };
 
   // ── Machine list for selected client ──────────────────────────────────────
   const { data: machinesData, isLoading: machinesLoading } = useQuery<PaginatedResponse<Machine>>({
@@ -367,6 +385,65 @@ export default function NewServiceOrderPage() {
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
+
+                      {/* Stock picker — only for PECA */}
+                      {watchedItems[index]?.item_type === 'PECA' && (
+                        <div className="col-span-12 -mt-1">
+                          {openStockPicker === index ? (
+                            <div className="border border-blue-200 rounded-lg p-2 bg-blue-50">
+                              <input
+                                type="text"
+                                autoFocus
+                                placeholder="Buscar por nome ou SKU..."
+                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 mb-2 bg-white outline-none focus:ring-2 focus:ring-blue-400"
+                                value={stockSearch[index] ?? ''}
+                                onChange={(e) => setStockSearch((p) => ({ ...p, [index]: e.target.value }))}
+                              />
+                              <div className="max-h-44 overflow-y-auto space-y-0.5">
+                                {filteredStock(index).length === 0 ? (
+                                  <p className="text-xs text-gray-400 text-center py-3">Nenhuma peça encontrada no estoque</p>
+                                ) : filteredStock(index).map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className="w-full text-left px-3 py-2 hover:bg-white rounded-lg flex items-center justify-between gap-2 transition-colors"
+                                    onClick={() => {
+                                      setValue(`items.${index}.description`, item.description);
+                                      setValue(`items.${index}.unit_price`, Number(item.sale_price));
+                                      setOpenStockPicker(null);
+                                      setStockSearch((p) => ({ ...p, [index]: '' }));
+                                    }}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-gray-800 truncate">{item.description}</p>
+                                      <p className="text-xs text-gray-400">SKU: {item.sku} · Estoque: {Number(item.quantity).toFixed(2)} {item.unit}</p>
+                                    </div>
+                                    <span className="text-sm font-semibold text-green-700 flex-shrink-0">
+                                      {formatCurrency(Number(item.sale_price))}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                className="mt-1.5 text-xs text-gray-400 hover:text-gray-600"
+                                onClick={() => setOpenStockPicker(null)}
+                              >
+                                Fechar
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 ml-0.5"
+                              onClick={() => setOpenStockPicker(index)}
+                            >
+                              <Package className="w-3 h-3" />
+                              Selecionar do estoque
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
 

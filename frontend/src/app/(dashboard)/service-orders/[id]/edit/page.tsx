@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Trash2, ArrowLeft, Loader2 } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Loader2, Package } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,9 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/spinner';
-import { serviceOrdersApi } from '@/lib/api';
+import { serviceOrdersApi, stockApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import type { ServiceOrder } from '@/types';
+import type { ServiceOrder, StockItem, StockItemListResponse } from '@/types';
 import type { AxiosError } from 'axios';
 
 const itemSchema = z.object({
@@ -50,11 +50,28 @@ export default function EditServiceOrderPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [openStockPicker, setOpenStockPicker] = useState<number | null>(null);
+  const [stockSearch, setStockSearch] = useState<Record<number, string>>({});
 
   const { data: os, isLoading } = useQuery<ServiceOrder>({
     queryKey: ['service-order', params.id],
     queryFn: async () => (await serviceOrdersApi.get(params.id)).data,
   });
+
+  const { data: stockData } = useQuery<StockItemListResponse>({
+    queryKey: ['stock-items'],
+    queryFn: async () => (await stockApi.list({ page_size: 500 })).data,
+    staleTime: 120_000,
+  });
+  const allStock: StockItem[] = stockData?.items?.filter((i) => i.active) ?? [];
+
+  const filteredStock = (idx: number) => {
+    const q = (stockSearch[idx] ?? '').toLowerCase().trim();
+    const items = q
+      ? allStock.filter((i) => i.description.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
+      : allStock;
+    return items.slice(0, 10);
+  };
 
   const {
     register,
@@ -344,6 +361,65 @@ export default function EditServiceOrderPage() {
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
+
+                      {/* Stock picker — only for PECA */}
+                      {watchedItems[index]?.item_type === 'PECA' && (
+                        <div className="col-span-12 -mt-1">
+                          {openStockPicker === index ? (
+                            <div className="border border-blue-200 rounded-lg p-2 bg-blue-50">
+                              <input
+                                type="text"
+                                autoFocus
+                                placeholder="Buscar por nome ou SKU..."
+                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 mb-2 bg-white outline-none focus:ring-2 focus:ring-blue-400"
+                                value={stockSearch[index] ?? ''}
+                                onChange={(e) => setStockSearch((p) => ({ ...p, [index]: e.target.value }))}
+                              />
+                              <div className="max-h-44 overflow-y-auto space-y-0.5">
+                                {filteredStock(index).length === 0 ? (
+                                  <p className="text-xs text-gray-400 text-center py-3">Nenhuma peça encontrada no estoque</p>
+                                ) : filteredStock(index).map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className="w-full text-left px-3 py-2 hover:bg-white rounded-lg flex items-center justify-between gap-2 transition-colors"
+                                    onClick={() => {
+                                      setValue(`items.${index}.description`, item.description);
+                                      setValue(`items.${index}.unit_price`, Number(item.sale_price));
+                                      setOpenStockPicker(null);
+                                      setStockSearch((p) => ({ ...p, [index]: '' }));
+                                    }}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-gray-800 truncate">{item.description}</p>
+                                      <p className="text-xs text-gray-400">SKU: {item.sku} · Estoque: {Number(item.quantity).toFixed(2)} {item.unit}</p>
+                                    </div>
+                                    <span className="text-sm font-semibold text-green-700 flex-shrink-0">
+                                      {formatCurrency(Number(item.sale_price))}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                className="mt-1.5 text-xs text-gray-400 hover:text-gray-600"
+                                onClick={() => setOpenStockPicker(null)}
+                              >
+                                Fechar
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 ml-0.5"
+                              onClick={() => setOpenStockPicker(index)}
+                            >
+                              <Package className="w-3 h-3" />
+                              Selecionar do estoque
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
 
