@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -220,9 +220,15 @@ export default function TecnicosPage() {
   });
 
   // ── Acesso da oficina ─────────────────────────────────────────────────────
-  const tenantId = getTenantIdFromToken();
-  const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const loginLink = tenantId ? `${appUrl}/login?tenant=${tenantId}` : null;
+  const [loginLink, setLoginLink] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  useEffect(() => {
+    const tid = getTenantIdFromToken();
+    if (tid) {
+      setTenantId(tid);
+      setLoginLink(`${window.location.origin}/login?tenant=${tid}`);
+    }
+  }, []);
 
   const copyText = (text: string, label: string) => {
     copyToClipboard(text)
