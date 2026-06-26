@@ -218,7 +218,7 @@ async def get_dashboard(
     estoque_critico = [
         LowStockItem(
             id=str(item.id),
-            name=item.name,
+            name=item.description,
             sku=item.sku or "—",
             quantity=_d(item.quantity),
             min_quantity=_d(item.min_quantity),
